@@ -450,6 +450,10 @@ module Offset = struct
     }
 end
 
+(* Make a DSL for drawing shapes on hexagons
+ * maybe corner + offset list for line shapes 
+ *)
+
 let column_letters = [|
     "A"; "B"; "C"; "D"; "E"; "F"; "G"; "H"; "I"; "J"; "K";
     "L"; "M"; "N"; "O"; "P"; "Q"; "R"; "S"; "T"; "U"; "V"; "W";
@@ -588,16 +592,94 @@ let draw_escape_hatch info hcoord n =
     context##lineTo c6.x c6.y;
     context##stroke;
 
-
     context##restore;
 ;;
 
 let draw_human_spawn info hcoord =
     draw_hex_base info hcoord Colors.black;
+
+    let context = info.context in
+    let layout = info.layout in
+
+    let center = Layout.hex_to_pixel layout hcoord in
+    let c4 = Point.(Layout.hex_corner_offset layout 4 + center) in
+    let c5 = Point.(Layout.hex_corner_offset layout 5 + center) in
+    let down = Point.make 0. 1. in
+
+    let size = info.hex_size in
+    let line_width = size *. 0.11 in
+    let line_width_2 = line_width*.0.5 in
+    let p1 = Point.(c5 + scale down (size *. 0.7)) in
+    let p2 = Point.(c5 + scale down (size *. 1.2)) in
+    let p3 = Point.(center + scale down (size *. 0.65)) in
+    let p4 = Point.(c4 + scale down (size *. 1.2)) in
+    let p5 = Point.(c4 + scale down (size *. 0.7)) in
+
+    let p6 = Point.(c5 + scale down (size *. 0.4)) in
+    let p7 = Point.(c4 + scale down (size *. 0.4)) in
+
+    let p8 = Point.(make (center.x +. size*.0.30) (c5.y +. size*.0.3)) in
+    let p9 = Point.(make (center.x -. size*.0.30) (c4.y +. size*.0.3)) in
+
+    context##save;
+    context##.strokeStyle := Js.string "white";
+    context##.lineCap := Js.string "butt";
+    context##.lineWidth := line_width; 
+    context##beginPath;
+    context##moveTo center.x center.y;
+    context##lineTo (p1.x -. line_width_2) (p1.y -. line_width_2);
+    context##lineTo (p6.x -. line_width_2) (p6.y -. line_width_2);
+    context##lineTo (p8.x -. line_width_2) (p8.y -. line_width_2);
+    context##moveTo (p6.x -. line_width_2) (p6.y -. line_width_2);
+    context##lineTo (p2.x -. line_width_2) (p2.y -. line_width_2);
+    context##lineTo p3.x (p3.y -. line_width_2);
+    context##lineTo (p4.x (*+. line_width_2*)) (p4.y -. line_width_2);
+    context##lineTo (p5.x (*+. line_width_2*)) (p5.y -. line_width_2);
+    context##lineTo (p7.x (*+. line_width_2*)) (p7.y -. line_width_2);
+    context##lineTo (p9.x (*+. line_width_2*)) (p9.y -. line_width_2);
+    context##moveTo (p5.x (*+. line_width_2*)) (p5.y -. line_width_2);
+    context##lineTo center.x center.y;
+    context##stroke;
+    context##restore;
 ;;
 
 let draw_alien_spawn info hcoord =
     draw_hex_base info hcoord Colors.black;
+
+    let context = info.context in
+    let layout = info.layout in
+
+    let center = Layout.hex_to_pixel layout hcoord in
+    let c4 = Point.(Layout.hex_corner_offset layout 4 + center) in
+    let c5 = Point.(Layout.hex_corner_offset layout 5 + center) in
+    let down = Point.make 0. 1. in
+
+    let size = info.hex_size in
+    let line_width = size *. 0.11 in
+    let line_width_2 = line_width*.0.5 in
+
+    let p1 = Point.(c4 + scale down (size *. 0.25)) in
+    let p2 = Point.(make (c5.x -. line_width_2) (center.y -. size*.0.10)) in
+    let p3 = Point.(c5 + scale down (size *. 1.4)) in
+    let p4 = Point.(make center.x (center.y +. size*.0.2)) in
+    let p5 = Point.(c4 + scale down (size *. 1.4)) in
+    let p6 = Point.(make (c4.x +. line_width_2) (center.y -. size*.0.10)) in
+    let p7 = Point.(c5 + scale down (size *. 0.25)) in
+
+    context##save;
+    context##.strokeStyle := Js.string "white";
+    context##.lineCap := Js.string "butt";
+    context##.lineWidth := line_width; 
+    context##beginPath;
+    context##moveTo p1.x p1.y;
+    context##lineTo p2.x p2.y;
+    context##lineTo (p3.x -. line_width_2) p3.y;
+    context##lineTo p4.x p4.y;
+    context##lineTo (p5.x +. line_width_2) p5.y;
+    context##lineTo p6.x p6.y;
+    context##lineTo p7.x p7.y;
+    context##stroke;
+    context##restore;
 ;;
 
 let draw_hex_item 

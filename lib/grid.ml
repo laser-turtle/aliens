@@ -203,6 +203,8 @@ module Point = struct
         y = a.y *. s;
     }
 
+    let scale_flip = Fn.flip scale
+
     let floor (a : t) = {
         x = Float.round_down a.x;
         y = Float.round_down a.y;
@@ -383,7 +385,7 @@ module Colors = struct
     let background = "#FFFFFF"
     let hex_border = "#797B7C"
     let dangerous_fill = "#CCCCCC"
-    let stripes = "#BAB8B9"
+    let stripes = "#A19FA0"
     let black = "#100E0C"
     let sector_text = "#646362"
 end
@@ -418,12 +420,12 @@ let draw_background (context : context_2d) (origin : Point.t) (hex_size : float)
 
     context##beginPath;
 
-    context##.lineWidth := 0.7;
+    context##.lineWidth := 0.5;
     context##.strokeStyle := Js.(string Colors.stripes);
     (* 4 * 23 = 92 lines ? *)
     (* 28 * 6 = 168 *)
     let hyp = Float.sqrt (w*.w +. h*.h) in
-    let spacing = Float.round_down (hyp /. 168.) in
+    let spacing = Float.round_down (hyp /. 108.) in
     context##translate (~-.w *. 0.38) (h *. 0.5);
     context##rotate (deg_to_rad ~-.45.);
     let x = ref 0. in
@@ -461,6 +463,18 @@ let hex_coord_to_sector_location (hcoord : HexCoord.t) : string =
     letter ^ row
 ;;
 
+let draw_hex_base (info : context_info) (hcoord : HexCoord.t) (bg_color : string) =
+    let context = info.context in
+    let layout = info.layout in
+    context##.fillStyle := Js.(string bg_color);
+    context##.strokeStyle := Js.(string Colors.hex_border);
+    let poly = Layout.polygon_corners layout hcoord in
+    polygon_path context poly;
+    context##fill;
+    polygon_path context poly;
+    context##stroke;
+;;
+
 let draw_sector_coord (info : context_info) (hcoord : HexCoord.t) =
     (* Draw some text in the middle *)
     let layout = info.layout in
@@ -480,28 +494,14 @@ let draw_sector_coord (info : context_info) (hcoord : HexCoord.t) =
 ;;
 
 let draw_safe_sector info hcoord =
-    let context = info.context in
-    let layout = info.layout in
-    context##.fillStyle := Js.(string "white");
-    context##.strokeStyle := Js.(string Colors.hex_border);
-    let poly = Layout.polygon_corners layout hcoord in
-    polygon_path context poly;
-    context##fill;
-    polygon_path context poly;
-    context##stroke;
+    draw_hex_base info hcoord "white";
     draw_sector_coord info hcoord;
 ;;
 
 let draw_dangerous_sector info hcoord =
     let context = info.context in
     let layout = info.layout in
-    context##.fillStyle := Js.(string Colors.dangerous_fill);
-    context##.strokeStyle := Js.(string Colors.hex_border);
-    let poly = Layout.polygon_corners info.layout hcoord in
-    polygon_path context poly;
-    context##fill;
-    polygon_path context poly;
-    context##stroke;
+    draw_hex_base info hcoord Colors.dangerous_fill;
 
     let center = Layout.hex_to_pixel layout hcoord |> Point.floor in
     let corners = Layout.polygon_corners layout hcoord in
@@ -541,15 +541,63 @@ let draw_dangerous_sector info hcoord =
 ;;
 
 let draw_escape_hatch info hcoord n =
-    ()
+    draw_hex_base info hcoord Colors.black;
+
+    let context = info.context in
+    let layout = info.layout in
+    context##save;
+    let font_size = info.hex_size in
+    let text = Int.to_string n |> Js.string in
+    context##.font := Js.string Printf.(sprintf "bold %fpx monospace" font_size);
+    context##.fillStyle := Js.string "white";
+    let center = Layout.hex_to_pixel layout hcoord in
+    let text_width = (context##measureText text)##.width in
+    let x = center.x -. text_width*.0.5 in
+    let y = center.y +. font_size*.0.3 in
+    context##fillText text x y;
+
+    (* Draw bars *)
+    let line_width = info.hex_size *. 0.11 in
+    let pull pt =
+        let open Point in
+        let amt = 0.30 in
+        pt + (scale (center - pt) amt)
+    in
+
+    let c1 = Point.(Layout.hex_corner_offset layout 5 + center) |> pull in
+    let c2 = Point.(Layout.hex_corner_offset layout 4 + center) |> pull in
+    let c3 = Point.(Layout.hex_corner_offset layout 3 + center) |> pull in
+
+    let c4 = Point.(Layout.hex_corner_offset layout 0 + center) |> pull in
+    let c5 = Point.(Layout.hex_corner_offset layout 1 + center) |> pull in
+    let c6 = Point.(Layout.hex_corner_offset layout 2 + center) |> pull in
+
+    context##.strokeStyle := Js.string "white";
+    context##.lineCap := Js.string "butt";
+    context##.lineWidth := line_width;
+    
+    context##beginPath;
+    context##moveTo (c1.x -. line_width*.0.5) (c1.y -. line_width*.0.5);
+    context##lineTo (c2.x -. line_width*.0.5) (c2.y -. line_width*.0.5);
+    context##lineTo (c3.x -. line_width*.0.5) (c3.y -. line_width*.0.5);
+    context##stroke;
+
+    context##beginPath;
+    context##moveTo c4.x c4.y;
+    context##lineTo c5.x c5.y;
+    context##lineTo c6.x c6.y;
+    context##stroke;
+
+
+    context##restore;
 ;;
 
 let draw_human_spawn info hcoord =
-    ()
+    draw_hex_base info hcoord Colors.black;
 ;;
 
 let draw_alien_spawn info hcoord =
-    ()
+    draw_hex_base info hcoord Colors.black;
 ;;
 
 let draw_hex_item 
@@ -628,7 +676,10 @@ let draw (canvas : canvas) =
             let sector_type = 
                 let r = Random.int 100 in
                 if r < 25 then Sector.Safe
-                else Sector.Dangerous
+                else if r < 75 then Sector.Dangerous
+                else if r < 85 then Sector.EscapeHatch (Random.int 4) 
+                else if r < 90 then Sector.AlienSpawn
+                else Sector.HumanSpawn
             in
             draw_hex_item context_info coord sector_type
         )

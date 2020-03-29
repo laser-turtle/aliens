@@ -1,0 +1,4 @@
+(executable
+ (name main)
+ (modes js)
+ (libraries ocaml_aliens js_of_ocaml))

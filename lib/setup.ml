@@ -11,13 +11,13 @@ let reset_canvas_size = Canvas.reset_canvas_size canvas_parent
 let game = 
     Game.new_game 4 (Game.generate_map())
 
-let set_round_counter (n : int) : unit =
+let set_round_counter (game : Game.state) : unit =
     let round = Dom_html.getElementById_exn "round-text" in
-    round##.innerHTML := Js.string ("Round " ^ Int.(to_string n));
+    round##.innerHTML := Js.string (Printf.sprintf "Round %d/%d" game.round game.max_rounds);
 ;;
 
 let set_player_turn (state : Game.state) : unit =
-    set_round_counter state.round;
+    set_round_counter state;
     let player_content = Dom_html.getElementById_exn "player-turns" in
     player_content##.innerHTML := Js.string "";
     Array.iteri state.players ~f:(fun idx _player ->
@@ -29,7 +29,18 @@ let set_player_turn (state : Game.state) : unit =
 
 let draw_map (game : Game.state) =
     let canvas = get_canvas map_canvas in
-    Grid.draw canvas game.map Game.board_size_w Game.board_size_h |> ignore
+    let _gui = get_canvas gui_canvas in
+    let info = Grid.draw canvas game.map.map Game.board_size_w Game.board_size_h in
+
+    (* Update the canvas dimensions to be only as much as we need *)
+   (* let x = info.origin.x +. info.grid_size.x +. info.hex_size in
+    let y = info.origin.y +. info.grid_size.y in
+    let dpi = Canvas.get_dpi () in
+    Canvas.resize canvas info.context dpi x y;
+    Canvas.resize gui Canvas.(context gui) dpi x y;
+    *)
+
+    info
 ;;
 
 let attach () =
@@ -40,7 +51,7 @@ let attach () =
         Canvas.fix_canvas_dpi map_canvas;
         Canvas.fix_canvas_dpi gui_canvas;
     
-        let info = ref (Grid.draw map_canvas game.map Game.board_size_w Game.board_size_h) in
+        let info = ref (draw_map game) in
 
         (* Setup canvas listener *)
         gui_canvas##.onmousemove := Dom_html.handler (fun evt ->
@@ -48,13 +59,16 @@ let attach () =
             let x = Caml.float evt##.clientX -. clientRect##.left in
             let y = Caml.float evt##.clientY -. clientRect##.top in
 
-            let context = gui_canvas##getContext Dom_html._2d_ in
+            (* TODO - selection is defintiely wrong in some way *)
+            (*Printf.sprintf "%d %d" evt##.clientX evt##.clientY |> Caml.print_endline;*)
+
+            let context = Canvas.context gui_canvas in
 
             let f = Layout.pixel_to_hex !info.layout Point.(make x y) in
             let h = FractHex.round f in
             context##clearRect 0. 0. 
                 Caml.(float gui_canvas##.width) Caml.(float gui_canvas##.height);
-            if HexMap.mem game.map h then (
+            if HexMap.mem game.map.map h then (
                 let poly = Layout.polygon_corners !info.layout h in
                 Grid.polygon_path context poly;
                 context##save;
@@ -73,7 +87,7 @@ let attach () =
             Canvas.fix_canvas_dpi gui_canvas;
             Canvas.fix_canvas_dpi map_canvas;
 
-            info := Grid.draw map_canvas game.map Game.board_size_w Game.board_size_h;
+            info := draw_map game;
 
             Js._false
         );

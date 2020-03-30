@@ -36,10 +36,16 @@ let resize canvas context dpi w h =
     context##scale scale scale;
 ;;
 
+let context (canvas : canvas) : context_2d =
+    canvas##getContext Dom_html._2d_
+;;
+
+let get_dpi () =
+    Dom_html.window##.devicePixelRatio
+
 let fix_canvas_dpi (canvas : canvas) =
     let context = canvas##getContext Dom_html._2d_ in
     let client_wf = canvas##.clientWidth |> Float.of_int in
     let client_hf = canvas##.clientHeight |> Float.of_int in
-    resize canvas context Dom_html.window##.devicePixelRatio 
-        client_wf client_hf;
+    resize canvas context (get_dpi()) client_wf client_hf;
 ;;

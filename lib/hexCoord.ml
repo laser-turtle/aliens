@@ -99,6 +99,10 @@ module T = struct
     let ( * ) = mul
     let (=) = equal
     let (<>) a b = not (a = b)
+
+    let to_string (t : t) =
+        Printf.sprintf "<q:%d, r:%d, s%d>"
+            (q t) (r t) (s t)
 end
 
 include T

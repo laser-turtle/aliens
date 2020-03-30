@@ -100,19 +100,6 @@ end
  * maybe corner + offset list for line shapes 
  *)
 
-let column_letters = [|
-    "A"; "B"; "C"; "D"; "E"; "F"; "G"; "H"; "I"; "J"; "K";
-    "L"; "M"; "N"; "O"; "P"; "Q"; "R"; "S"; "T"; "U"; "V"; "W";
-|]
-
-let hex_coord_to_sector_location (hcoord : HexCoord.t) : string =
-    let col = HexCoord.q hcoord in
-    let row = HexCoord.r hcoord + ((HexCoord.q hcoord + -1 * (HexCoord.q hcoord land 1)) / 2) in
-    let letter = column_letters.(col) in
-    let row = Printf.sprintf "%02d" (row + 1) in
-    letter ^ row
-;;
-
 let draw_hex_base (info : context_info) (hcoord : HexCoord.t) (bg_color : string) =
     let context = info.context in
     let layout = info.layout in
@@ -133,7 +120,7 @@ let draw_sector_coord (info : context_info) (hcoord : HexCoord.t) =
     let font_size = size *. 0.65 in
     context##save;
     let center = Layout.hex_to_pixel layout hcoord in
-    let text = Js.string (hex_coord_to_sector_location hcoord) in
+    let text = Js.string (GameUtil.hex_coord_to_sector_location hcoord) in
     context##.font := Js.string ((font_size |> Float.to_string) ^ "px monospace");
     context##.fillStyle := Js.string Colors.sector_text;
     let text_width = (context##measureText text)##.width in
@@ -363,6 +350,8 @@ let calculate_grid_dimensions map_w map_h (canvas : canvas) =
         (cx, yoffset, grid_w, grid_h, size)
     )
 ;;
+
+let column_letters = GameUtil.column_letters
 
 let draw_top_axis (info : context_info) =
     let context = info.context in

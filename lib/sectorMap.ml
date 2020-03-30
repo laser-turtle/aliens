@@ -18,7 +18,8 @@ let find_exn (t : t) =
 
 let mem (t : t) = Map.mem t.map
 
-let get_neighbors (t : t) = HexMap.get_neighbors t.map
+let get_neighbors (t : t) c = 
+    HexMap.get_neighbors t.map c
 
 let random_map w h : t =
     let map =

@@ -52,7 +52,7 @@ end
 
 module Move = struct
     type t = ChangeName of Player.id * string
-           | PlayerMove of Player.id * HexCoord.t
+           | PlayerMove of HexCoord.t
            | NoiseInAnySector of HexCoord.t
            | AcceptAttack
            | DeclineAttack
@@ -83,10 +83,29 @@ type state = {
     events : Event.t list;
 }
 
+let player_name (state : state) (id : Player.id) : string =
+    state.players.(id).name
+;;
+
+let event_to_string (state : state) (event : Event.t) : string =
+    let sector_loc = GameUtil.hex_coord_to_sector_location in
+    match event with
+    | Noise (id, coord) ->
+        Printf.sprintf "%s: Noise in sector %s"
+            (player_name state id)
+            (sector_loc coord)
+    | Silence id -> Printf.sprintf "%s: Silence in all sectors" (player_name state id)
+    | Attack (id, coord) -> 
+        Printf.sprintf "%s: Attacks sector %s" 
+            (player_name state id)
+            (sector_loc coord)
+    | Escape (id, _, n) -> Printf.sprintf "%s: ESCAPED IN POD %d!" (player_name state id) n
+;;
+
 let random_state = Base.Random.State.make_self_init()
 
 let gen_players num_players alien_spawn human_spawn =
-    let num_aliens = 
+    let num_aliens =
         if Int.rem num_players 2 = 0 then
             num_players / 2
         else
@@ -101,12 +120,26 @@ let gen_players num_players alien_spawn human_spawn =
                 sector_history = [];
                 team = if is_alien then Alien else Human;
                 alive = Alive;
-                name = "";
+                name = Printf.sprintf "Player %d" i;
             }
         )
     in
     Array.permute ~random_state players;
+    for i=0 to Array.length players - 1 do
+        players.(i) <- { players.(i) with id = i }
+    done;
     players
+;;
+
+let hcs = GameUtil.hex_coord_to_sector_location
+
+let print_set set =
+    set
+    |> HexMap.Set.to_list 
+    |> List.map ~f:GameUtil.hex_coord_to_sector_location
+    |> String.concat ~sep:" "
+    |> Printf.sprintf "{ %s }"
+    |> Caml.print_endline
 ;;
 
 let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
@@ -116,13 +149,13 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
         | Alien ->
             (* Aliens can move 1 or 2 spaces *)
             let set = SectorMap.get_neighbors map player.current_pos in
-            HexMap.Set.fold set ~init:HexMap.Set.empty ~f:(fun set coord ->
+            HexMap.Set.fold set ~init:set ~f:(fun set coord ->
                 let new_set = SectorMap.get_neighbors map coord in
                 HexMap.Set.union set new_set
             )
             (* Remove any escape hatches *)
             |> HexMap.Set.filter ~f:(fun coord ->
-                SectorMap.is_escape_hatch map coord
+                not SectorMap.(is_escape_hatch map coord)
             )
     in
     let remove = Fn.flip HexMap.Set.remove in
@@ -261,6 +294,10 @@ let check_for_end_game (state : state) : state =
     )
 ;;
 
+let current_player (state : state) : Player.t =
+    state.players.(state.current_player)
+;;
+
 let change_player (state : state) =
     let current_player = find_first_alive_player state.players in
     let next_players = generate_next_players current_player state.players in
@@ -278,8 +315,9 @@ let change_player (state : state) =
     check_for_end_game next_state
 ;;
 
-let check_player_move (state : state) (pid : Player.id) (coord : HexCoord.t) : apply_result =
-    let player = get_player state pid in
+let check_player_move (state : state) (coord : HexCoord.t) : apply_result =
+    let player = current_player state in
+    let pid = player.id in
     let moves = get_player_moves state.map player in
     if HexMap.Set.mem moves coord then (
         let state = update_player state pid ~f:(fun p ->
@@ -316,10 +354,6 @@ let check_player_move (state : state) (pid : Player.id) (coord : HexCoord.t) : a
     ) else (
         Error ()
     )
-;;
-
-let current_player (state : state) : Player.t =
-    state.players.(state.current_player)
 ;;
 
 let add_event (event : Event.t) (state : state) : state = {
@@ -383,7 +417,7 @@ let apply (state : state) (move : Move.t) : apply_result =
     assert (verify_transition state move);
     match move with
     | ChangeName (pid, name) -> Ok (change_name state pid name)
-    | PlayerMove (pid, coord) -> check_player_move state pid coord
+    | PlayerMove coord -> check_player_move state coord
     | AcceptAttack -> do_alien_attack state
     | DeclineAttack -> Ok (pick_danger_action state)
     | NoiseInAnySector coord -> do_noise_in_any_sector state coord

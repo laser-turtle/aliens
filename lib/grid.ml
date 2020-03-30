@@ -3,319 +3,22 @@ open! Js_of_ocaml
 
 let float = Caml.float
 
-module HexCoord = struct
-    module T = struct
-        type t = 
-            | Cube of {
-                q : int;
-                r : int;
-                s : int;
-            }
-            | Axial of {
-                q : int;
-                r : int;
-            }
-            [@@deriving compare, sexp]
+type canvas = Dom_html.canvasElement Js.t
+type context_2d = Dom_html.canvasRenderingContext2D Js.t
 
-        let make q r s =
-            Cube {q;r;s}
+type context_info = {
+    canvas : canvas;
+    context : context_2d;
+    layout : Layout.t;
+    map_w : int;
+    map_h : int;
+    hex_size : float;
+    client_size : Point.t;
+    origin : Point.t;
+    grid_size : Point.t;
+}
 
-        let make_axis q r = 
-            Axial {q;r}
-
-        let q : t -> int = function
-            | Cube {q; _} -> q
-            | Axial {q; _} -> q
-
-        let r : t -> int = function
-            | Cube {r; _} -> r
-            | Axial {r; _} -> r
-
-        let s : t -> int = function
-            | Cube {s; _} -> s
-            | Axial {q; r} -> -q - r
-
-        let qf (t : t) : float =
-            q t |> Float.of_int
-
-        let rf (t : t) : float =
-            r t |> Float.of_int
-
-        let sf (t : t) : float =
-            s t |> Float.of_int
-
-        let equal (t1 : t) (t2 : t) : bool =
-            Int.(q t1 = q t2 &&
-                 r t1 = r t2 &&
-                 s t1 = s t2)
-
-        let add (a : t) (b : t) : t =
-            Cube {q = q a + q b;
-                  r = r a + r b;
-                  s = s a + s b; }
-
-        let sub (a : t) (b : t) : t =
-            Cube {q = q a - q b;
-                  r = r a - r b;
-                  s = s a - s b; }
-
-        let mul (a : t) (k : int) : t =
-            match a with
-            | Cube {q;r;s} -> Cube {q=q*k; r=r*k; s=s*k}
-            | Axial {q;r} -> Axial {q=q*k; r=r*k}
-
-        let length (t : t) : int =
-            (abs (q t) + abs (r t) + abs (s t)) / 2
-
-        let distance (a : t) (b : t) : int =
-            length (sub a b)
-
-        type dir = 
-            | BR
-            | B
-            | BL
-            | TL
-            | TR
-            | T
-
-        let direction_coord = function
-            | BR -> make 1 0 ~-1
-            | B -> make 1 ~-1 0
-            | BL -> make 0 ~-1 1
-            | TL -> make ~-1 0 1
-            | TR -> make ~-1 1 0
-            | T -> make 0 1 ~-1
-
-        let neighbor (t : t) (d : dir) : t =
-            add t (direction_coord d)
-
-        let (+) = add
-        let (-) = sub
-        let ( * ) = mul
-        let (=) = equal
-        let (<>) a b = not (a = b)
-    end
-
-    include T
-
-    include Comparator.Make(T)
-end
-
-module FractHex = struct
-    type t = {
-        q : float;
-        r : float;
-        s : float;
-    }
-
-    let make q r s = {
-        q; r; s;
-    }
-
-    let of_hex_coord (h : HexCoord.t) : t = {
-        q = HexCoord.qf h;
-        r = HexCoord.rf h;
-        s = HexCoord.sf h;
-    }
-
-    let round (t : t) : HexCoord.t =
-        let q = Float.round t.q
-        and r = Float.round t.r
-        and s = Float.round t.s in
-        let q_diff = Float.abs q -. t.q
-        and r_diff = Float.abs r -. t.r
-        and s_diff = Float.abs s -. t.s in
-        let q = Float.to_int q
-        and r = Float.to_int r
-        and s = Float.to_int s in
-        if Float.(q_diff > r_diff && q_diff > s_diff) then
-            HexCoord.make (-r - s) r s
-        else if Float.(r_diff > s_diff) then
-            HexCoord.make q (-q - s) r
-        else
-            HexCoord.make q r (-q - r)
-    ;;
-end
-
-module Line = struct
-    let lerp (a : float) (b : float) (t : float) =
-        a *. (1. -. t) +. b *. t
-    ;;
-
-    let hex_lerp (a : HexCoord.t) (b : HexCoord.t) (t : float) : FractHex.t =
-        let af = FractHex.of_hex_coord a
-        and bf = FractHex.of_hex_coord b in
-        FractHex.make (lerp af.q bf.q t)
-                      (lerp af.r bf.r t)
-                      (lerp af.s bf.s t)
-    ;;
-
-    let hex_line (a : HexCoord.t) (b : HexCoord.t) : HexCoord.t array =
-        let n = HexCoord.distance a b in
-        let nf = Float.of_int n in
-        let step = 1. /. Float.max nf 1. in
-        Array.init n ~f:(fun idx ->
-            hex_lerp a b (step *. Float.of_int idx) |> FractHex.round
-        )
-    ;;
-end
-
-module Orientation = struct
-    type t = {
-        f0 : float;
-        f1 : float;
-        f2 : float;
-        f3 : float;
-        b0 : float;
-        b1 : float;
-        b2 : float;
-        b3 : float;
-        start_angle : float;
-    }
-    
-    let make ~f0 ~f1 ~f2 ~f3 ~b0 ~b1 ~b2 ~b3 ~start_angle = {
-        f0; f1; f2; f3; b0; b1; b2; b3; start_angle;
-    }
-end
-
-module Point = struct
-    type t = {
-        x : float;
-        y : float;
-    }
-
-    let zero = {
-        x = 0.; y = 0.;
-    }
-
-    let add (a : t) (b : t) = {
-        x = a.x +. b.x;
-        y = a.y +. b.y;
-    }
-
-    let sub (a : t ) (b : t) = {
-        x = a.x -. b.x;
-        y = a.y -. b.y;
-    }
-
-    let scale (a : t) (s : float) = {
-        x = a.x *. s;
-        y = a.y *. s;
-    }
-
-    let scale_flip = Fn.flip scale
-
-    let floor (a : t) = {
-        x = Float.round_down a.x;
-        y = Float.round_down a.y;
-    }
-
-    let dot (a : t) (b : t) =
-        a.x *. b.x +. a.y *. b.y
-
-    let length (a : t) = 
-        Float.sqrt (dot a a)
-
-    let normalize (a : t) = 
-        let len = length a in
-        { x = a.x /. len;
-          y = a.y /. len; }
-
-    let (+) = add
-    let (-) = sub
-    let ( * ) = scale
-
-    let make x y = {
-        x; y;
-    }
-end
-
-module Layout = struct
-    let sqrt_3 = Float.sqrt 3.
-
-    let pointy = Float.(Orientation.make
-        ~f0:sqrt_3 ~f1:(sqrt_3 / 2.) ~f2:0. ~f3:(3. / 2.)
-        ~b0:(sqrt_3 / 3.) ~b1:(-1. / 3.) ~b2:0. ~b3:(2. / 3.)
-        ~start_angle:0.5
-    )
-
-    let flat = Float.(Orientation.make
-        ~f0:(3.0 / 2.0) ~f1:0.0 ~f2:(sqrt_3 / 2.0) ~f3:sqrt_3
-        ~b0:(2.0 / 3.0) ~b1:0.0 ~b2:(-1.0 / 3.0) ~b3:(sqrt_3 / 3.0)
-        ~start_angle:0.
-    )
-
-    type t = {
-        orientation : Orientation.t;
-        size : Point.t;
-        origin : Point.t;
-    }
-
-    let make orientation size origin = {
-        orientation; size; origin;
-    }
-
-    let hex_to_pixel (t : t) (h : HexCoord.t) : Point.t =
-        let module H = HexCoord in
-        let open Float in
-        let m = t.orientation in
-        let x = (m.f0 * H.qf h + m.f1 * H.rf h) * t.size.x in
-        let y = (m.f2 * H.qf h + m.f3 * H.rf h) * t.size.y in
-        Point.make (x + t.origin.x) (y + t.origin.y)
-    ;;
-
-    let pixel_to_hex (t : t) (p : Point.t) =
-        let module H = HexCoord in
-        let open Float in
-        let m = t.orientation in
-        let x = (p.x - t.origin.x) / t.size.x in
-        let y = (p.y - t.origin.y) / t.size.y in
-        let q = m.b0 * x + m.b1 * y in
-        let r = m.b2 * x + m.b3 * y in
-        (q, r, -q - r)
-    ;;
-
-    let hex_corner_offset (t : t) (corner : int) : Point.t =
-        let open Float in
-        let corner = Float.of_int corner in
-        let angle = 2. * Float.pi * (t.orientation.start_angle + corner) / 6. in
-        Point.make (t.size.x * cos angle) (t.size.y * sin angle)
-    ;;
-
-    let polygon_corners (t : t) (h : HexCoord.t) : Point.t array =
-        let center = hex_to_pixel t h in
-        let result = [|
-            Point.zero; Point.zero; Point.zero;
-            Point.zero; Point.zero; Point.zero;
-        |] in
-        let open Float in
-        for i=0 to 5 do
-            let offset = hex_corner_offset t i in
-            result.(i) <- Point.make (center.x + offset.x) (center.y + offset.y)
-        done;
-        result
-    ;;
-end
-
-module HexMap = struct
-    type 'a t = (HexCoord.t, 'a, HexCoord.comparator_witness) Map.t
-
-    let empty : 'a t = Map.empty (module HexCoord)
-
-    let create_grid w h ~f =
-        let map = ref empty in
-        for s=0 to w-1 do
-            let s_offset = Float.(round_down ((of_int s) / 2.)) |> Int.of_float in
-            for r = -s_offset to (h - s_offset - 1) do
-                let h = HexCoord.make s r (-r - s) in
-                map := Map.set !map ~key:h ~data:(f h)
-            done
-        done;
-        !map
-    ;;
-end
-
-let polygon_path (context : Dom_html.canvasRenderingContext2D Js.t) (points : Point.t array) : unit =
+let polygon_path (context : context_2d) (points : Point.t array) : unit =
     context##beginPath;
     (*
     context##moveTo (points.(0).x+.0.5) (points.(0).y+.0.5);
@@ -336,51 +39,6 @@ let polygon_path (context : Dom_html.canvasRenderingContext2D Js.t) (points : Po
     context##closePath
 ;;
 
-let resize canvas context dpi w h =
-    canvas##.width := Float.(w * dpi |> to_int);
-    canvas##.height := Float.(h * dpi |> to_int);
-    let wi = Float.to_int w
-    and hi = Float.to_int h in
-    canvas##.style##.width := Js.string (Int.to_string wi ^ "px");
-    canvas##.style##.height := Js.string (Int.to_string hi ^ "px");
-    let scale = dpi in
-    context##scale scale scale;
-;;
-
-module Sector = struct
-    type t = Dangerous
-           | AlienSpawn
-           | HumanSpawn
-           | Safe
-           | Unused
-           | EscapeHatch of int
-end
-
-type canvas = Dom_html.canvasElement Js.t
-type context_2d = Dom_html.canvasRenderingContext2D Js.t
-
-let calculate_grid_dimensions map_w map_h (canvas : canvas) =
-    let client_w = canvas##.clientWidth |> Float.of_int in
-    let client_h = canvas##.clientHeight |> Float.of_int in
-    let map_wf = Float.of_int map_w in
-    let map_hf = Float.of_int map_h in
-    let s60 = 0.8660254037844386 in
-    let total_w = 1.5 *. map_wf +. 0.5 in
-    let total_h = s60 *. (2. *. map_hf +. 1.) in
-    let w_x = client_w /. total_w in
-    let h_y = client_h /. total_h in
-    let size = Float.min w_x h_y in
-    let grid_h = size*.((2. *. map_hf)*.s60) in
-    let grid_w = size*.(map_wf*.1.5-.1.5) in
-    if Float.(w_x < h_y) then (
-        let cy = (client_h -. grid_h) *. 0.5 in
-        (w_x, cy, grid_w, grid_h, size)
-    ) else (
-        let cx = (client_w -. grid_w) *. 0.5 in
-        (cx, h_y, grid_w, grid_h, size)
-    )
-;;
-
 module Colors = struct
     let background = "#FFFFFF"
     let hex_border = "#797B7C"
@@ -389,18 +47,6 @@ module Colors = struct
     let black = "#100E0C"
     let sector_text = "#646362"
 end
-
-type context_info = {
-    canvas : canvas;
-    context : context_2d;
-    layout : Layout.t;
-    map_w : int;
-    map_h : int;
-    hex_size : float;
-    client_size : Point.t;
-    origin : Point.t;
-    grid_size : Point.t;
-}
 
 let deg_to_rad (degree : float) =
     degree *. Float.pi /. 180.
@@ -693,7 +339,29 @@ let draw_hex_item
     | EscapeHatch n -> draw_escape_hatch context hcoord n
     | AlienSpawn -> draw_alien_spawn context hcoord
     | HumanSpawn -> draw_human_spawn context hcoord
-    | Unused -> ()
+;;
+
+let calculate_grid_dimensions map_w map_h (canvas : canvas) =
+    let client_w = canvas##.clientWidth |> Float.of_int in
+    let client_h = canvas##.clientHeight |> Float.of_int in
+    let map_wf = Float.of_int map_w in
+    let map_hf = Float.of_int map_h in
+    let s60 = 0.8660254037844386 in
+    let total_w = 1.5 *. map_wf +. 0.5 in
+    let total_h = s60 *. (2. *. (map_hf +. 1.) +. 1.) in
+    let w_x = client_w /. total_w in
+    let h_y = client_h /. total_h in
+    let size = Float.min w_x h_y in
+    let grid_h = size*.((2. *. map_hf)*.s60) in
+    let grid_w = size*.(map_wf*.1.5-.1.5) in
+    let yoffset = 2.5*.size in
+    if Float.(w_x < h_y) then (
+        (*let cy = (client_h -. grid_h) *. 0.5 in*)
+        (w_x, yoffset, grid_w, grid_h, size)
+    ) else (
+        let cx = (client_w -. grid_w) *. 0.5 in
+        (cx, yoffset, grid_w, grid_h, size)
+    )
 ;;
 
 let draw_top_axis (info : context_info) =
@@ -715,15 +383,10 @@ let draw_top_axis (info : context_info) =
     context##restore;
 ;;
 
-let draw (canvas : canvas) =
+let draw (canvas : canvas) map_w map_h =
     let context = canvas##getContext Dom_html._2d_ in
     let client_wf = canvas##.clientWidth |> Float.of_int in
     let client_hf = canvas##.clientHeight |> Float.of_int in
-    resize canvas context Dom_html.window##.devicePixelRatio 
-        client_wf client_hf;
-
-    let map_w = 23
-    and map_h = 14 in
 
     let origin_x, origin_y, grid_w, grid_h, size = 
         calculate_grid_dimensions map_w map_h canvas 
@@ -746,24 +409,14 @@ let draw (canvas : canvas) =
         grid_size;
     } in
 
-    let map = HexMap.create_grid map_w map_h ~f:(fun _ -> ()) in
+    let map = HexMap.random_map map_w map_h in
 
     draw_background context origin size grid_size;
     draw_top_axis context_info;
 
     context##.fillStyle := Js.(string "white");
     context##.strokeStyle := Js.(string Colors.hex_border);
-    Map.iter_keys map ~f:(fun coord ->
-        if Random.int 100 > 50 then (
-            let sector_type = 
-                let r = Random.int 100 in
-                if r < 25 then Sector.Safe
-                else if r < 75 then Sector.Dangerous
-                else if r < 85 then Sector.EscapeHatch (Random.int 4) 
-                else if r < 90 then Sector.AlienSpawn
-                else Sector.HumanSpawn
-            in
-            draw_hex_item context_info coord sector_type
-        )
+    Map.iteri map ~f:(fun ~key ~data ->
+        draw_hex_item context_info key data
     );
 ;;

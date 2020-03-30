@@ -1,0 +1,76 @@
+<html>
+  <body>
+    <style>
+      #outgoing {
+        width: 600px;
+        word-wrap: break-word;
+        white-space: normal;
+      }
+    </style>
+    <form>
+      <textarea id="incoming"></textarea>
+      <button type="submit">submit</button>
+    </form>
+    <pre id="outgoing"></pre>
+    <script src="simplepeer.min.js"></script>
+    <script>
+		"use strict";
+
+		const ws = new WebSocket("ws://localhost:8080");
+		var p = null;
+		ws.onopen = function(event) {
+			const is_initiator = location.hash === '#1';
+
+			p = new SimplePeer({
+			   initiator: is_initiator,
+			   trickle: false
+			});
+
+			p.on('error', err => console.log('error', err))
+			p.on('signal', data => {
+			  console.log('SIGNAL', JSON.stringify(data))
+		      if (is_initiator) {
+				  ws.send(JSON.stringify({
+					  'host': true,
+					  'signal': data,
+				  }));
+			  } else {
+				  ws.send(JSON.stringify({
+					  'id': document.getElementById('incoming').value,
+					  'answer': data,
+				  }));
+			  }
+			});
+
+			document.querySelector('form').addEventListener('submit', ev => {
+				ev.preventDefault();
+				ws.send(JSON.stringify({
+					'connect': document.getElementById('incoming').value
+				}));
+			});
+
+			p.on('connect', () => {
+			  console.log('CONNECT')
+			  p.send('whatever' + Math.random())
+			})
+
+			p.on('data', data => {
+			  console.log('data: ' + data)
+			});
+		}
+
+		ws.onmessage = function(event) {
+			console.log(event.data);
+			var msg = JSON.parse(event.data);
+			if (msg.id) {
+				document.getElementById('outgoing').textContent = msg.id
+			} else if (msg.signal_data) {
+				p.signal(msg.signal_data);
+			} else if (msg.answer) {
+				p.signal(msg.answer)
+			}
+		}
+
+    </script>
+  </body>
+</html>

@@ -7,6 +7,9 @@ type t = {
     escape_hatches : HexCoord.t list;
 }
 
+let pp _fmt _t =
+    ()
+
 let is_escape_hatch (t : t) (coord : HexCoord.t) : bool =
     List.exists t.escape_hatches ~f:(fun c ->
         HexCoord.(coord = c)

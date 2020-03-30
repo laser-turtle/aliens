@@ -6,10 +6,16 @@ open! Base
 
 type 'a t = (HexCoord.t, 'a, HexCoord.comparator_witness) Map.t
 
+let pp _fmt _t = 
+    ()
+
 let mem = Map.mem
 
 module Set = struct
     type t = (HexCoord.t, HexCoord.comparator_witness) Set.t
+
+    let pp _fmt _t =
+        ()
 
     let empty = Set.empty (module HexCoord)
     let add = Set.add

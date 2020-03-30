@@ -7,12 +7,15 @@ let max_rounds = 39
 module Player = struct
     type team = Alien
               | Human
+    [@@deriving show{with_path=false}]
 
     type id = int
+    [@@deriving show{with_path=false}]
 
     type alive = Alive
                | Killed
                | Escaped
+    [@@deriving show{with_path=false}]
 
     type t = {
         id : id;
@@ -22,6 +25,7 @@ module Player = struct
         alive : alive; (* Maybe more than bool *)
         name : string;
     }
+    [@@deriving show{with_path=false}]
 
     let filter_alive (tlst : t list) (alive : alive) : t list =
         List.filter tlst ~f:(fun p -> Poly.equal p.alive alive)
@@ -32,12 +36,14 @@ module EndState = struct
     type condition = AllHumansEscaped
                    | AllHumansKilled
                    | RoundLimit
+    [@@deriving show{with_path=false}]
 
     type t = {
         humans_escaped : Player.t list;
         humans_killed : Player.t list;
         condition : condition;
     }
+    [@@deriving show{with_path=false}]
 end
 
 module NextAction = struct
@@ -48,6 +54,7 @@ module NextAction = struct
            | ConfirmSafeSector
            | ConfirmSilenceInAllSectors
            | GameOver of EndState.t
+           [@@deriving show{with_path=false}]
 end
 
 module Move = struct
@@ -59,6 +66,7 @@ module Move = struct
            | AcceptSafeSector
            | AcceptSilenceInAllSectors
            | AcceptNoiseInYourSector
+           [@@deriving show{with_path=false}]
 
     type invalid = unit
 end
@@ -70,10 +78,11 @@ module Event = struct
            | Attack of Player.id * HexCoord.t
            | Escape of Player.id * HexCoord.t * int (* pod *)
            (* Win conditions ? *)
+           [@@deriving show{with_path=false}]
 end
 
 type state = {
-    players : Player.t array;
+    players : Player.t list;
     round : int;
     max_rounds : int;
     current_player : int;
@@ -82,9 +91,10 @@ type state = {
     next : NextAction.t;
     events : Event.t list;
 }
+[@@deriving show{with_path=false}]
 
 let player_name (state : state) (id : Player.id) : string =
-    state.players.(id).name
+    List.nth_exn state.players id |> fun p -> p.name
 ;;
 
 let event_to_string (state : state) (event : Event.t) : string =
@@ -104,7 +114,7 @@ let event_to_string (state : state) (event : Event.t) : string =
 
 let random_state = Base.Random.State.make_self_init()
 
-let gen_players num_players alien_spawn human_spawn =
+let gen_players num_players alien_spawn human_spawn : Player.t list =
     let num_aliens =
         if Int.rem num_players 2 = 0 then
             num_players / 2
@@ -112,7 +122,7 @@ let gen_players num_players alien_spawn human_spawn =
             num_players / 2 + 1
     in
     let players =
-        Array.init num_players ~f:(fun i ->
+        List.init num_players ~f:(fun i ->
             let is_alien = i < num_aliens in
             Player.{
                 id = i;
@@ -123,11 +133,9 @@ let gen_players num_players alien_spawn human_spawn =
                 name = Printf.sprintf "Player %d" i;
             }
         )
+        |> List.permute ~random_state
+        |> List.mapi ~f:(fun id player -> Player.{player with id})
     in
-    Array.permute ~random_state players;
-    for i=0 to Array.length players - 1 do
-        players.(i) <- { players.(i) with id = i }
-    done;
     players
 ;;
 
@@ -165,9 +173,8 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
     |> remove map.human_spawn
 ;;
 
-let generate_next_players (current_player : int) (players : Player.t array) : Player.id list =
+let generate_next_players (current_player : int) (players : Player.t list) : Player.id list =
     players
-    |> Array.to_list
     |> List.filter ~f:(fun p ->
         p.Player.id > current_player &&
         match p.Player.alive with
@@ -177,13 +184,17 @@ let generate_next_players (current_player : int) (players : Player.t array) : Pl
     |> List.map ~f:(fun p -> p.Player.id)
 ;;
 
-let find_first_alive_player (players : Player.t array) : Player.id =
+let find_first_alive_player (players : Player.t list) : Player.id =
     let result =
-        Array.find_exn ~f:(fun p ->
+        List.find_exn ~f:(fun p ->
             Poly.equal p.Player.alive Player.Alive
         ) players
     in
     result.id
+;;
+
+let next_player_action (map : SectorMap.t) (player : Player.t)  =
+    NextAction.CurrentPlayerPickMove (get_player_moves map player)
 ;;
 
 let new_game (num_players : int) (map : SectorMap.t) = 
@@ -195,7 +206,7 @@ let new_game (num_players : int) (map : SectorMap.t) =
     map;
     current_player = 0;
     next_players = generate_next_players 0 players;
-    next = NextAction.CurrentPlayerPickMove (get_player_moves map players.(0));
+    next = next_player_action map List.(hd_exn players);
     events = [];
 }
 
@@ -215,8 +226,8 @@ module DangerousAction = struct
     ;;
 end
 
-let update_player_list (players : Player.t array) (pid : Player.id) ~f =
-    Array.mapi players ~f:(fun i p -> 
+let update_player_list (players : Player.t list) (pid : Player.id) ~f =
+    List.mapi players ~f:(fun i p -> 
         if i = pid then f p else p
     )
 ;;
@@ -226,8 +237,8 @@ let update_player (state : state) (pid : Player.id) ~f = {
 }
 
 let change_name (state : state) (pid : Player.id) (name : string) : state =
-    if pid >= 0 && pid < Array.length state.players then (
-        update_player state pid ~f:(fun p -> {
+    if pid >= 0 && pid < List.length state.players then (
+        update_player state pid ~f:(fun (p : Player.t) -> {
             p with name
         })
     ) else (
@@ -236,7 +247,7 @@ let change_name (state : state) (pid : Player.id) (name : string) : state =
 ;;
 
 let get_player (state : state) (pid : Player.id) =
-    state.players.(pid)
+    List.nth_exn state.players pid
 ;;
 
 let update_next (state : state) (next : NextAction.t) : state = {
@@ -252,10 +263,10 @@ let pick_danger_action (state : state) : state =
     | Silence -> update_next state ConfirmSilenceInAllSectors
 ;;
 
-let get_players_from_team (players : Player.t array) (team : Player.team) : Player.t list =
-    Array.filter players ~f:(fun p ->
+let get_players_from_team (players : Player.t list) (team : Player.team) : Player.t list =
+    List.filter players ~f:(fun p ->
         Poly.equal p.team team
-    ) |> Array.to_list
+    )
 ;;
 
 let generate_end_stats (state : state) (type_ : EndState.condition) : EndState.t = 
@@ -295,22 +306,25 @@ let check_for_end_game (state : state) : state =
 ;;
 
 let current_player (state : state) : Player.t =
-    state.players.(state.current_player)
+    List.nth_exn state.players state.current_player
 ;;
 
 let change_player (state : state) =
-    let current_player = find_first_alive_player state.players in
-    let next_players = generate_next_players current_player state.players in
     let next_state =
         match state.next_players with
         | [] -> 
             { state with 
                 round = state.round + 1;
-                current_player;
-                next_players;
+                current_player = 0;
+                next_players = generate_next_players 0 state.players;
+                next = next_player_action state.map List.(hd_exn state.players);
             }
             (* TODO - check win conditions, huamns could all be dead? *)
-        | _ :: tl -> { state with current_player; next_players = tl }
+        | hd :: tl -> { 
+            state with 
+                current_player = hd; next_players = tl;
+                next = next_player_action state.map (get_player state hd);
+        }
     in
     check_for_end_game next_state
 ;;
@@ -364,14 +378,14 @@ let do_alien_attack (state : state) : apply_result =
     let attacker = current_player state in
     let players_in_sector =
         state.players
-        |> Array.filter ~f:(fun (p : Player.t) ->
+        |> List.filter ~f:(fun (p : Player.t) ->
                 p.id <> attacker.id &&
                 HexCoord.(p.current_pos = attacker.current_pos)
            )
     in
     (* Kill these players *)
     let state =
-        Array.fold players_in_sector ~init:state ~f:(fun state p -> 
+        List.fold players_in_sector ~init:state ~f:(fun state p -> 
             update_player state p.id ~f:(fun p ->
                 { p with alive = Player.Killed }
             )
@@ -401,7 +415,7 @@ let do_noise_in_any_sector (state : state) (coord : HexCoord.t) : apply_result =
 ;;
 
 let do_noise_in_your_sector (state : state) : apply_result =
-    let p = state.players.(state.current_player) in
+    let p = current_player state in
     do_accept state (Event.Noise (p.id, p.current_pos))
 ;;
 

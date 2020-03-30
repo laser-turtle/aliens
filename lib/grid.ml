@@ -383,7 +383,7 @@ let draw_top_axis (info : context_info) =
     context##restore;
 ;;
 
-let draw (canvas : canvas) map_w map_h =
+let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : context_info =
     let context = canvas##getContext Dom_html._2d_ in
     let client_wf = canvas##.clientWidth |> Float.of_int in
     let client_hf = canvas##.clientHeight |> Float.of_int in
@@ -409,8 +409,6 @@ let draw (canvas : canvas) map_w map_h =
         grid_size;
     } in
 
-    let map = HexMap.random_map map_w map_h in
-
     draw_background context origin size grid_size;
     draw_top_axis context_info;
 
@@ -419,4 +417,5 @@ let draw (canvas : canvas) map_w map_h =
     Map.iteri map ~f:(fun ~key ~data ->
         draw_hex_item context_info key data
     );
+    context_info
 ;;

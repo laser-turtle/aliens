@@ -2,6 +2,8 @@ open! Base
 
 type 'a t = (HexCoord.t, 'a, HexCoord.comparator_witness) Map.t
 
+let mem = Map.mem
+
 module Set = struct
     include Set
 

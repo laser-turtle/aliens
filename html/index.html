@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" style="height:100%;margin:0;">
+<html lang="en">
     <head>
         <title>Escape from the aliens</title>
         <meta charset="utf-8">
@@ -8,77 +8,82 @@
         <script src="../_build/default/bin/main.bc.js"></script>
         <link rel="stylesheet" href="bulma.min.css">
         <link rel="stylesheet" href="style.css">
+        <style>
+        .player {
+            margin-left: 0.1rem;
+            margin-right: 0.1rem;
+            margin-bottom: 0.2rem;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+            background-color: #DDDDDD;
+            border-radius: 0.2rem;
+            white-space: nowrap;
+            display: inline-block;
+        }
+
+        .active {
+            background-color: #CCFFCC;
+            font-size: 1.25rem;
+        }
+
+        .computer {
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 200px;
+        }
+
+        .subcanvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        </style>
     </head>
 
-    <body style="height:100%;">
+    <body>
         <div class="tile is-ancestor" style="height:100%">
             <div class="tile is-vertical">
                 <div class="tile" style="flex-grow:0.2">
-                    <div class="tile is-parent">
-                        <div class="tile is-child box">
-                            <p class="title">Round 0</p>
-                        </div>
+                    <div class="tile is-parent is-6" style="flex-grow:0.5">
+                        <article class="tile is-child notification is-light box">
+                            <p class="title">Sector History</p>
+                            <div class="content">
+                                <div class="sector-history">
+                                    <strong>01[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
+                                </div> 
+                            </div>
+                        </article>
                     </div>
                     <div class="tile is-parent">
-                        <div class="tile is-child box">
-                            <p class="title">Player turn</p>
+                        <div class="tile is-child box is-light">
+                            <p class="title">Player Turn</p>
+                            <p id="round-text" class="subtitle">Round 0</p>
+                            <div id="player-turns">
+                                <span class="player">Nick</span>
+                                <span class="player active">Rachel</span>
+                                <span class="player">Dima</span>
+                                <span class="player">Hayden</span>
+                                <span class="player">Computer 1</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="tile is-parent" style="flex-grow:0.5">
-                    <article class="tile is-child notification is-light box">
-                        <p class="title">Sector History</p>
-                        <div class="content">
-                            <div class="sector-history">
-                                <strong>01[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>02[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>03[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>04[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>05[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>06[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>07[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>08[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>09[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>10[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>11[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>12[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>13[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <br>
-                                <strong>14[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>15[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>16[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>17[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>18[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>19[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>20[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>21[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>22[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>23[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>24[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>25[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>26[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <br>
-                                <strong>27[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>28[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>29[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>30[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>31[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>32[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>33[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>34[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>35[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>36[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>37[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>38[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                                <strong>39[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
-                            </div> 
-                        </div>
-                    </article>
                 </div>
                 <div class="tile" style="flex-grow:2">
                     <div class="tile is-parent" height="100%">
                         <div id="canvas-parent" class="tile is-child" width="100%" height="100%" style="padding:0; padding-left:0.75rem">
-                            <canvas id='map-canvas' style="width:100%;height:100%">
+                            <div id="canvas-container">
+                                <canvas id='map-canvas' class='subcanvas'></canvas>
+                                <canvas id='gui-canvas' class='subcanvas' style="z-index:1"></canvas>
+                            </div>
                             </canvas>
                         </div>
                     </div>
@@ -86,9 +91,10 @@
                         <article class="tile is-child notification box">
                             <div class="content">
                                 <p class="title">Event List</p>
-                                <p class="subtitle">With even more content</p>
-                                <div class="content">
-                                    <!-- Content -->
+                                <div id='event-list-content' class="content">
+                                    <p>Nick: Noise in sector A01</p>
+                                    <p>Rachel: Silence in all sectors</p>
+                                    <p>Hayden: Attacking sector U03</p>
                                 </div>
                             </div>
                         </article>
@@ -96,8 +102,8 @@
                 </div>
             </div>
         </div>
-    <script type="text/javascript">
-        "use strict";
-    </script>
+        <script type="text/javascript">
+            "use strict";
+        </script>
     </body>
 </html>

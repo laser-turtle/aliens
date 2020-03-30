@@ -16,7 +16,6 @@ let reset_canvas_size parent canvas =
     |> fun elt ->
         let w = elt##.clientWidth
         and h = elt##.clientHeight in
-        let canvas = get_canvas canvas in
         canvas##.width := w;
         canvas##.height := h;
         canvas##.style##.width := Js.string "100%";

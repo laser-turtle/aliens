@@ -82,6 +82,9 @@ let get_player_moves (state : state) (n : int) : HexMap.Set.t =
         HexMap.Set.remove set player.current_pos
 ;;
 
+let generate_map () =
+    HexMap.random_map board_size_w board_size_h
+
 module DangerousAction = struct
     type t = NoiseInYourSector (* 10/25 *)
            | NoiseInAnySector (* 10/25 *)

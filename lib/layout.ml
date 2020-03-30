@@ -33,7 +33,7 @@ let hex_to_pixel (t : t) (h : HexCoord.t) : Point.t =
     Point.make (x + t.origin.x) (y + t.origin.y)
 ;;
 
-let pixel_to_hex (t : t) (p : Point.t) =
+let pixel_to_hex (t : t) (p : Point.t) : FractHex.t =
     let module H = HexCoord in
     let open Float in
     let m = t.orientation in
@@ -41,7 +41,7 @@ let pixel_to_hex (t : t) (p : Point.t) =
     let y = (p.y - t.origin.y) / t.size.y in
     let q = m.b0 * x + m.b1 * y in
     let r = m.b2 * x + m.b3 * y in
-    (q, r, -q - r)
+    FractHex.make q r (-q - r)
 ;;
 
 let hex_corner_offset (t : t) (corner : int) : Point.t =

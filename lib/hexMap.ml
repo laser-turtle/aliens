@@ -20,14 +20,7 @@ module Set = struct
     let empty = Set.empty (module HexCoord)
     let add = Set.add
     let length = Set.length
-    (*let fold s ~init ~f = 
-        let init = ref init in
-        Set.iter s ~f:(fun item ->
-            init := f !init item
-        );
-        !init
-    ;;
-    *)
+    let of_list = Set.of_list (module HexCoord)
     let fold = Set.fold
     let to_list = Set.to_list
     let union = Set.union

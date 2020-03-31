@@ -11,6 +11,13 @@ let reset_canvas_size = Canvas.reset_canvas_size canvas_parent
 let game = 
     ref (Game.new_game 4 (Game.generate_map()))
 
+let apply_move (game : Game.state) (move : Game.Move.t) : Game.state =
+    Game.apply game move
+    |> function
+       | Ok state -> state
+       | Error _ -> Caml.print_endline "GAME ERRORED"; game
+;;
+
 let set_round_counter (game : Game.state) : unit =
     let round = Dom_html.getElementById_exn "round-text" in
     round##.innerHTML := Js.string (Printf.sprintf "Round %d/%d" game.round game.max_rounds);
@@ -63,33 +70,55 @@ let set_event_list (state : Game.state) : unit =
     )
 ;;
 
-let set_buttons (state : Game.state) : unit =
-    let btn id =
-        id
-        |> Dom_html.getElementById_exn
-        |> Dom_html.tagged
-        |> function
-            | Button b -> b
-            | _ -> failwith "expected button"
-    in
-    let noise_your = btn "noise-in-your-sector-btn" in
-    let noise_any = btn "noise-in-any-sector-btn" in
-    let silence = btn "silence-in-all-sectors-btn" in
-    let safe = btn "safe-btn" in
-    let enable el = el##.disabled := Js._false in
-    let disable lst =
-        List.iter lst ~f:(fun element ->
-            element##.disabled := Js._true
-        )
-    in
-    disable [noise_your; noise_any; silence; safe];
-    let open Game in
-    match state.next with
-    | NextAction.ConfirmNoiseInYourSector -> enable noise_your
-    | PickNoiseInAnySector -> enable noise_any
-    | ConfirmSafeSector -> enable safe
-    | ConfirmSilenceInAllSectors -> enable silence
-    | _ -> ()
+let apply_global (move : Game.Move.t) : unit =
+    Caml.print_endline "Applying global move...";
+    game := apply_move !game move;
+    Caml.print_endline Game.(show_state !game);
+;;
+
+let safe_sector_click () =
+    apply_global Game.Move.AcceptSafeSector
+;;
+
+let silence_sector_click () =
+    apply_global Game.Move.AcceptSilenceInAllSectors
+;;
+
+let noise_your_sector_click () =
+    apply_global Game.Move.AcceptNoiseInYourSector
+;;
+
+let get_btn id =
+    id
+    |> Dom_html.getElementById_exn
+    |> Dom_html.tagged
+    |> function
+        | Button b -> b
+        | _ -> failwith "expected button"
+;;
+
+let set_gui_handlers layout ~move_handler ~click_handler =
+    let gui = get_canvas gui_canvas in
+    gui##.onmousemove := Dom_html.handler (fun evt ->
+        let clientRect = gui##getBoundingClientRect in
+        let x = Caml.float evt##.clientX -. clientRect##.left in
+        let y = Caml.float evt##.clientY -. clientRect##.top in
+        move_handler gui layout x y;
+        Js._false
+    );
+    gui##.onclick := Dom_html.handler (fun evt ->
+        let clientRect = gui##getBoundingClientRect in
+        let x = Caml.float evt##.clientX -. clientRect##.left in
+        let y = Caml.float evt##.clientY -. clientRect##.top in
+        click_handler layout x y;
+        Js._false
+    );
+;;
+
+let clear_gui_handlers () =
+    let gui = get_canvas gui_canvas in
+    gui##.onmousemove := Dom_html.no_handler;
+    gui##.onclick := Dom_html.no_handler;
 ;;
 
 let clear_gui () =
@@ -111,40 +140,6 @@ let draw_moves (layout : Layout.t) (moves : HexMap.Set.t) : unit =
         context##fill;
     );
     context##restore;
-;;
-
-let update_ui_for_state (layout : Layout.t) (state : Game.state) : unit =
-    set_round_counter state;
-    set_player_turn state;
-    set_event_list state;
-    set_sector_history state;
-    set_buttons state;
-    match state.Game.next with
-    | Game.NextAction.CurrentPlayerPickMove moves -> draw_moves layout moves; 
-    | _ -> clear_gui()
-;;
-
-let draw_map (game : Game.state) =
-    let canvas = get_canvas map_canvas in
-    let _gui = get_canvas gui_canvas in
-    let info = Grid.draw canvas game.map.map Game.board_size_w Game.board_size_h in
-
-    (* Update the canvas dimensions to be only as much as we need *)
-   (* let x = info.origin.x +. info.grid_size.x +. info.hex_size in
-    let y = info.origin.y +. info.grid_size.y in
-    let dpi = Canvas.get_dpi () in
-    Canvas.resize canvas info.context dpi x y;
-    Canvas.resize gui Canvas.(context gui) dpi x y;
-    *)
-
-    info
-;;
-
-let apply_move (game : Game.state) (move : Game.Move.t) : Game.state =
-    Game.apply game move
-    |> function
-       | Ok state -> state
-       | Error _ -> Caml.print_endline "GAME ERRORED"; game
 ;;
 
 let advance_game (game : Game.state) : Game.state =
@@ -171,6 +166,154 @@ let advance_game (game : Game.state) : Game.state =
         game
 ;;
 
+let pick_move_handler moves gui layout x y =
+    let context = Canvas.context gui in
+    let coord = 
+        Point.(make x y)
+        |> Layout.pixel_to_hex layout
+        |> FractHex.round 
+    in
+    clear_gui();
+    draw_moves layout moves; 
+    if HexMap.Set.mem moves coord then (
+        gui##.className := Js.string "subcanvas pointer";
+        context##save;
+        context##.globalAlpha := 0.5;
+        context##.fillStyle := Js.string "#FCAD03";
+        let poly = Layout.polygon_corners layout coord in
+        Grid.polygon_path context poly;
+        context##fill;
+        context##restore;
+    ) else (
+        gui##.className := Js.string "subcanvas";
+    )
+;;
+
+let rec pick_move_click moves click layout x y =
+    let coord = 
+        Point.(make x y)
+        |> Layout.pixel_to_hex layout
+        |> FractHex.round 
+    in
+    if HexMap.Set.mem moves coord then (
+        click coord;
+    )
+
+and set_buttons (info : Grid.context_info ref) (state : Game.state) : unit =
+    (* TODO - might be easier to pull up the click handlers to here *)
+    let noise_your = get_btn "noise-in-your-sector-btn" in
+    let noise_any = get_btn "noise-in-any-sector-btn" in
+    let silence = get_btn "silence-in-all-sectors-btn" in
+    let safe = get_btn "safe-btn" in
+    let enable el = el##.disabled := Js._false in
+    let disable lst =
+        List.iter lst ~f:(fun element ->
+            element##.disabled := Js._true
+        )
+    in
+    disable [noise_your; noise_any; silence; safe];
+    let open Game in
+    match state.next with
+    | NextAction.ConfirmNoiseInYourSector -> 
+        enable noise_your
+    | ConfirmSafeSector -> 
+        enable safe
+    | ConfirmSilenceInAllSectors -> 
+        enable silence
+    | PickNoiseInAnySector -> 
+        enable noise_any;
+        let selected_sector = ref None in
+        let moves = Map.keys state.map.map |> HexMap.Set.of_list in
+        draw_moves !info.layout moves;
+        set_gui_handlers !info.layout
+            ~move_handler:(fun gui layout x y ->
+                pick_move_handler moves gui layout x y;
+                match !selected_sector with
+                | None -> ()
+                | Some coord ->
+                    let context = Canvas.context gui in
+                    context##save;
+                    context##.globalAlpha := 0.5;
+                    context##.fillStyle := Js.string "#FCAD03";
+                    let poly = Layout.polygon_corners layout coord in
+                    Grid.polygon_path context poly;
+                    context##fill;
+                    context##restore;
+            )
+            ~click_handler:(pick_move_click moves (fun coord ->
+                (*selected_sector := Some coord*)
+                clear_gui_handlers();
+                clear_gui();
+                apply_global Game.Move.(NoiseInAnySector coord);
+                update_ui_for_state info !game;
+            ));
+        (*noise_any##.onclick := Dom_html.handler (fun _ ->
+            begin match !selected_sector with
+            | Some coord -> 
+                clear_gui_handlers();
+                clear_gui();
+                apply_global Game.Move.(NoiseInAnySector coord);
+                update_ui_for_state info !game;
+            | None -> ()
+            end;
+            Js._false
+        )*)
+
+    | _ -> ()
+
+and update_ui_for_state (info : Grid.context_info ref) (state : Game.state) : unit =
+    set_round_counter state;
+    set_player_turn state;
+    set_event_list state;
+    set_sector_history state;
+    set_buttons info state;
+    match state.Game.next with
+    | Game.NextAction.CurrentPlayerPickMove moves -> 
+        set_gui_handlers !info.layout
+            ~move_handler:(pick_move_handler moves)
+            ~click_handler:(pick_move_click moves (fun coord -> 
+                let move = Game.Move.PlayerMove coord in
+                apply_global move;
+                update_ui_for_state info !game
+            ));
+        draw_moves !info.layout moves; 
+    | Game.NextAction.PickNoiseInAnySector -> ()
+    | _ -> 
+        clear_gui_handlers();
+        clear_gui()
+;;
+
+let draw_map (game : Game.state) =
+    let canvas = get_canvas map_canvas in
+    let _gui = get_canvas gui_canvas in
+    let info = Grid.draw canvas game.map.map Game.board_size_w Game.board_size_h in
+
+    (* Update the canvas dimensions to be only as much as we need *)
+   (* let x = info.origin.x +. info.grid_size.x +. info.hex_size in
+    let y = info.origin.y +. info.grid_size.y in
+    let dpi = Canvas.get_dpi () in
+    Canvas.resize canvas info.context dpi x y;
+    Canvas.resize gui Canvas.(context gui) dpi x y;
+    *)
+
+    info
+;;
+
+let initialize_buttons (info : Grid.context_info ref) =
+    let set_click id fn = 
+        let btn = get_btn id  in
+        btn##.onclick := Dom_html.handler (fun _ ->
+            fn();
+            update_ui_for_state info !game;
+            Js._false;
+        )
+    in
+    set_click "noise-in-your-sector-btn" noise_your_sector_click;
+    set_click "silence-in-all-sectors-btn" silence_sector_click;
+    set_click "safe-btn" safe_sector_click;
+    (*set_click "noise-in-any-sector-btn" in*)
+;;
+
 let attach () =
     Dom_html.window##.onload := Dom_html.handler (fun _ ->
         let map_canvas = get_canvas map_canvas in
@@ -180,13 +323,16 @@ let attach () =
 
         let info = ref (draw_map !game) in
 
-        update_ui_for_state !info.layout !game;
+        initialize_buttons info;
+
+        (* Setup generic buttons *)
+        update_ui_for_state info !game;
 
         let loop () =
             Caml.print_endline "Making move...";
             game := advance_game !game;
             Caml.print_endline Game.(show_state !game);
-            update_ui_for_state !info.layout !game;
+            update_ui_for_state info !game;
         in
 
         let btn = Dom_html.getElementById_exn "advance" in

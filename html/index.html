@@ -5,10 +5,15 @@
         <meta charset="utf-8">
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
         <script src="simplepeer.min.js"></script>
-        <script src="../_build/default/bin/main.bc.js"></script>
+        <script src="main.bc.js"></script>
         <link rel="stylesheet" href="bulma.min.css">
         <link rel="stylesheet" href="style.css">
         <style>
+        .attack-choice-container { 
+            position: absolute;
+            z-index: 2;
+        }
+
         .pointer {
             cursor: pointer;
         }
@@ -92,7 +97,7 @@
                 <div class="tile" style="flex-grow:0.2">
                     <div class="tile is-parent is-6" style="flex-grow:0.5">
                         <article class="tile is-child notification is-light box">
-                            <p class="title">Sector History</p>
+                            <p id="sector-history-title" class="title">Sector History</p>
                             <div class="content">
                                 <div id="sector-history" class="sector-history">
                                     <strong>01[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
@@ -102,7 +107,8 @@
                     </div>
                     <div class="tile is-parent">
                         <div class="tile is-child box is-light">
-                            <p class="title">Player Turn</p>
+                            <p class="title">Player Turn
+                                <span id="player-type" class="player" style="float:right">Human</span></p>
                             <p id="round-text" class="subtitle">Round 0/39</p>
                             <div id="player-turns">
                                 <span class="player">Nick</span>
@@ -148,6 +154,10 @@
                     </div>
                 </div>
             </div>
+        </div>
+        <div id='attack-choices' class="attack-choice-container" style="display:none" >
+            <button id='attack' class='button is-danger'>Attack</button>
+            <button id='dont-attack' class='button is-light'>Don't Attack</button>
         </div>
         <script type="text/javascript">
             "use strict";

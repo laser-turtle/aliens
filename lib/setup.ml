@@ -412,12 +412,13 @@ let input_value input =
 
 let not_empty_string = Fn.compose not String.is_empty
 
-let setup_lobby_modal host =
+let setup_lobby_modal ?(on_click=fun()->())  host =
     let btn = get_btn "lobby-start-btn" in
     if not host then (
         btn##.style##.display := Js.string "none";
     ) else (
         btn##.onclick := Dom_html.handler (fun _ ->
+            on_click();
             Js._false
         );
     )
@@ -439,6 +440,19 @@ let setup_join_modal () =
                disable_modal "join-modal";
                setup_lobby_modal false;
                enable_modal "lobby-modal";
+
+               let callback = Js.wrap_callback (fun _data ->
+                   Caml.print_endline "join callback!";
+               ) in
+
+               let module U = Js.Unsafe in
+               let f = U.global##.connectToLobby in
+               U.fun_call f [|
+                   U.inject Js.(string name);
+                   U.inject Js.(string game); 
+                   U.inject Js.(string server);
+                   U.inject callback;
+                |] |> ignore;
        );
 
         Js._false
@@ -454,6 +468,14 @@ let select_value (select : Dom_html.selectElement Js.t) : string =
        | None -> failwith "expected some item"
 ;;
 
+let str_array_to_str_list (str_array : Js.string_array Js.t) : string list =
+    str_array
+    |> Js.str_array
+    |> Js.to_array
+    |> Array.map ~f:Js.to_string
+    |> Array.to_list
+;;
+
 let setup_host_modal () =
     let host_btn = get_btn "host-modal-btn" in
     let name = get_input "host-modal-name" in
@@ -462,14 +484,40 @@ let setup_host_modal () =
 
     host_btn##.onclick := Dom_html.handler (fun _ ->
         let name = input_value name in
-        let _player_count = select_value num_players |> Int.of_string in
+        let player_count = select_value num_players |> Int.of_string in
         let server = input_value server in
 
         if not_empty_string name 
            && not_empty_string server then (
+               (* Kind of gross state bleed here *)
+               let player_list = ref [] in
+
                disable_modal "host-modal";
-               setup_lobby_modal true;
-               enable_modal "lobby-modal"
+               setup_lobby_modal true ~on_click:(fun () -> 
+                   (* Start the game with player list *)
+                   ()
+               );
+               enable_modal "lobby-modal";
+
+               let callback = Js.wrap_callback (fun data ->
+                   Caml.print_endline (Js._JSON##stringify data |> Js.to_string);
+                   match Js.to_string data##._type with
+                   | "player-list-update" -> 
+                        player_list := str_array_to_str_list data##.players;
+                        List.iter ~f:Caml.print_endline !player_list
+                   | "player-dropped" -> ()
+                   | "player-update" -> ()
+                   | _ -> ()
+               ) in
+
+               let module U = Js.Unsafe in
+               let f = U.global##.setupLobby in
+               U.fun_call f [|
+                   U.inject Js.(string name);
+                   U.inject player_count; 
+                   U.inject Js.(string server);
+                   U.inject callback;
+                |] |> ignore;
        );
 
         Js._false

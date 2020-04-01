@@ -4,11 +4,11 @@ const wss = new WebSocket.Server({
     port : 8080
 });
 
-var ids = {}
-
 function random_index(size) {
 	return Math.floor(Math.random() * size);
 }
+
+var lobbies = {}
 
 function generateID() {
 	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -20,53 +20,135 @@ function generateID() {
 	}
 
 	let id = get_id();
-	while (id in ids ) {
+	while (id in lobbies) {
 		id = get_id();
 	}
 
 	return id;
 }
 
-console.log(generateID());
-console.log(generateID());
-console.log(generateID());
-console.log(generateID());
+function is_lobby_full(game_id) {
+	let lobby = lobbies[game_id].lobby_info;
+	let full = lobby.max_players === lobby.players.length;
+	console.log("Lobby is full?", full);
+	return full;
+}
+
+function get_lobby_info(game_id) {
+	return JSON.stringify({
+		type: 'lobby-update',
+		data: lobbies[game_id].lobby_info,
+	})
+}
+
+function send_to_lobby_exclude_host(game_id, msg) {
+	var sockets = lobbies[game_id].sockets;
+	for (var i = 1; i < sockets.length; ++i)
+	{
+		if (sockets[i].alive) {
+			sockets[i].ws.send(msg);
+		}
+	}
+}
+
+function update_lobby(game_id) {
+	let json = get_lobby_info(game_id);
+	var sockets = lobbies[game_id].sockets;
+	for (var i = 0; i < sockets.length; ++i)
+	{
+		if (sockets[i].alive) {
+			sockets[i].ws.send(json);
+		}
+	}
+}
+
+function kill_socket(game_id, socket_id) {
+	lobbies[game_id].sockets[socket_id].alive = false;
+}
+
+function close_all_sockets(game_id) {
+	let socks = lobbies[game_id].sockets;
+	for (var i = 0; i < socks.length; ++i) {
+		socks[i].alive = false;
+		socks[i].ws.close();
+	}
+}
 
 wss.on('connection', function connection(ws) {
   console.log("Got connection");
-  const id = generateID();	
-  ids[id] = {
-	'socket': ws,
-	'id' : id,
-  };
+
+  var game_id = null;
+  var socket_id = null;
 
   ws.on('close', (event) => {
-	  delete ids[id];
+	  if (socket_id == 0) {
+	  	delete lobbies[game_id];
+	  } else {
+		  kill_socket(game_id, socket_id);
+		  lobbies[game_id].sockets[0].ws.send(JSON.stringify({
+			  type: 'player-dropped',
+			  id: socket_id,
+		  }));
+	  }
   });
 
   ws.on('message', (message) => {
-	try {
-		console.log('received: %s', message);
-		var msg = JSON.parse(message);
-		if (msg.host) {
-			ids[id].host_signal = msg.signal;
-		} else if (msg.connect) {
-			ws.send(JSON.stringify({
-				'signal_data': ids[msg.connect].host_signal
-			}));
-		} else if (msg.answer) {
-			ids[msg.id].socket.send(JSON.stringify({
-				'answer': msg.answer
-			}));
-		}
-	} catch (err) { 
-		console.log(err)
-	}
-  });
+	  let msg = JSON.parse(message);
+	  switch (msg.type) {
+		  case 'new-lobby':
+			  game_id = generateID();	
+			  lobbies[game_id] = {
+			    sockets: [{alive:true, ws}],
+				lobby_info: {
+					id : game_id,
+					players : [msg.name],
+					max_players : msg.max_players,
+				},
+			  };
+			  socket_id = 0;
+			  console.log(lobbies);
+			  update_lobby(game_id);
+			break;
 
-  ws.send(JSON.stringify(
-	  { 'id': id }
-  ));
+	      case 'game-update':
+			  send_to_lobby_exclude_host(msg.game_id, msg.data);
+			  break;
+
+		  case 'player-update':
+			  msg.player_id = socket_id;
+			  lobbies[msg.game_id].sockets[0].send(msg.data);
+			  break;
+
+		  case 'join-lobby':
+			  console.log("join-lobby");
+			  console.log(msg);
+			  console.log(lobbies);
+			  if (msg.game_id in lobbies) {
+			  	console.log("game exists");
+				  if (is_lobby_full(msg.game_id))
+				  {
+					  console.log("Lobby is full, closing");
+					  ws.send(JSON.stringify({
+						  type: 'lobby-full'
+					  }));
+					  ws.close();
+				  } else {
+					  info = lobbies[msg.game_id];
+					  game_id = msg.game_id;
+					  socket_id = info.sockets.length;
+					  info.lobby_info.players.push(msg.name);
+					  info.sockets.push({alive: true, ws:ws});
+					  update_lobby(msg.game_id);
+				  }
+			  } else {
+				  ws.send(JSON.stringify({
+					  type: 'no-such-lobby',
+				  }));
+				  ws.close();
+			  }
+			  break;
+	  }
+  });
 });
 
 console.log("waiting...");

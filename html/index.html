@@ -4,8 +4,8 @@
         <title>Escape from the aliens</title>
         <meta charset="utf-8">
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-        <script src="simplepeer.min.js"></script>
         <script src="main.bc.js"></script>
+        <script src="lobby.js"></script>
         <link rel="stylesheet" href="bulma.min.css">
         <link rel="stylesheet" href="style.css">
         <style>
@@ -242,13 +242,7 @@
                     -
                     <span id='player-count' class="lobby-player-count">2/8</span>
                     </p> 
-                    <p class="panel-tabs"></p>
-                    <a class="panel-block">
-                       Some Player
-                    </a>
-                    <a class="panel-block">
-                       Player 2 
-                    </a>
+                    <p id='lobby-tabs' class="panel-tabs"></p>
                     <div id='lobby-modal-host-start' class='lobby-start-button'>
                         <button id='lobby-start-btn' class='button is-success' style='align-self:end;margin:0.5rem'>Start</button>
                     </div>
@@ -288,14 +282,5 @@
                 </div>
             </div>
         </div>
-        <script type="text/javascript">
-            "use strict";
-            
-            function setupLobby(server) {
-                // Use a websocket to connect to the server
-                // and get our id
-
-            }
-        </script>
     </body>
 </html>

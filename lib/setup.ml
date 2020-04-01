@@ -11,28 +11,6 @@ let reset_canvas_size = Canvas.reset_canvas_size canvas_parent
 let game = 
     ref (Game.new_game 4 (Game.generate_map()))
 
-let make_image path =
-    let img = Dom_html.createImg Dom_html.document in
-    img##.src := Js.string path;
-    img
-;;
-
-let alien_image = make_image "alien.png"
-let astronaut_image = make_image "astronaut.png"
-
-let draw_img (image : Dom_html.imageElement Js.t) (info : Grid.context_info) (coord : HexCoord.t) : unit =
-    let gui = Canvas.get_canvas gui_canvas in
-    let context = Canvas.context gui in
-    let loc = Layout.hex_to_pixel info.layout coord in
-    let size = info.hex_size*.2. in
-    let x = loc.x -. size*.0.5 in
-    let y = loc.y -. size*.0.5 in
-    context##drawImage_withSize image x y size size
-;;
-
-let draw_alien = draw_img alien_image
-let draw_astronaut = draw_img astronaut_image
-
 let apply_move (game : Game.state) (move : Game.Move.t) : Game.state =
     Game.apply game move
     |> function
@@ -117,13 +95,35 @@ let noise_your_sector_click () =
     apply_global Game.Move.AcceptNoiseInYourSector
 ;;
 
-let get_btn id =
+let get_elem_id id =
+    Dom_html.getElementById_exn id
+
+let get_elem_type id fn =
     id
     |> Dom_html.getElementById_exn
     |> Dom_html.tagged
-    |> function
+    |> fn
+;;
+
+let get_btn id =
+    get_elem_type id (function
         | Button b -> b
         | _ -> failwith "expected button"
+    )
+;;
+
+let get_input id =
+    get_elem_type id (function
+        | Input i -> i
+        | _ -> failwith "expected input"
+    )
+;;
+
+let get_select id =
+    get_elem_type id (function
+        | Select s -> s
+        | _ -> failwith "expected select"
+    )
 ;;
 
 let set_gui_handlers layout ~move_handler ~click_handler =
@@ -155,6 +155,12 @@ let clear_gui () =
     let context = Canvas.context gui in
     context##clearRect 0. 0. (Caml.float gui##.width) (Caml.float gui##.height);
 ;;
+
+let add_gui_pointer gui =
+    gui##.className := Js.string "subcanvas pointer"
+
+let remove_gui_pointer gui =
+    gui##.className := Js.string "subcanvas"
 
 let draw_player (info : Grid.context_info) (state : Game.state) =
     let module Player = Game.Player in
@@ -194,8 +200,14 @@ let draw_moves (layout : Layout.t) (moves : HexMap.Set.t) : unit =
     context##restore;
 ;;
 
+let hide_attack_container () =
+    let div = Dom_html.getElementById_exn "attack-choices" in
+    div##.style##.display := Js.string "none";
+;;
+
 let advance_game (game : Game.state) : Game.state =
     let open Game in
+    hide_attack_container();
     match game.next with
     | NextAction.CurrentPlayerPickMove moves ->
         let move = Set.choose_exn moves in
@@ -229,7 +241,7 @@ let pick_move_handler moves gui layout x y =
     clear_gui();
     draw_moves layout moves; 
     if HexMap.Set.mem moves coord then (
-        gui##.className := Js.string "subcanvas pointer";
+        add_gui_pointer gui;
         context##save;
         context##.globalAlpha := 0.5;
         context##.fillStyle := Js.string "#FFDB4A";
@@ -238,7 +250,7 @@ let pick_move_handler moves gui layout x y =
         context##fill;
         context##restore;
     ) else (
-        gui##.className := Js.string "subcanvas";
+        remove_gui_pointer gui;
     )
 ;;
 
@@ -250,6 +262,7 @@ let do_decide_to_attack (info : Grid.context_info) (coord : HexCoord.t) =
     let gx = gui_loc##.left in
     let gy = gui_loc##.top in
     let div = Dom_html.getElementById_exn "attack-choices" in
+    remove_gui_pointer gui;
     div##.style##.display := Js.string "block";
     let bounds = div##getBoundingClientRect in
     let x = gx +. pt.x -. (bounds##.right -. bounds##.left)*.0.5 in
@@ -334,7 +347,10 @@ and update_ui_for_state (info : Grid.context_info ref) (state : Game.state) : un
         draw_moves !info.layout moves; 
         draw_player !info state;
     | PickNoiseInAnySector -> ()
-    | DecideToAttack coord -> do_decide_to_attack !info coord
+    | DecideToAttack coord -> 
+        (* Remove pointer *)
+        clear_gui_handlers();
+        do_decide_to_attack !info coord
     | _ -> 
         clear_gui_handlers();
         clear_gui();
@@ -355,11 +371,6 @@ let draw_map (game : Game.state) =
     *)
 
     info
-;;
-
-let hide_attack_container () =
-    let div = Dom_html.getElementById_exn "attack-choices" in
-    div##.style##.display := Js.string "none";
 ;;
 
 let initialize_buttons (info : Grid.context_info ref) =
@@ -388,8 +399,107 @@ let initialize_buttons (info : Grid.context_info ref) =
     );
 ;;
 
+let enable_modal id =
+    Dom_html.(getElementById_exn id)##.className := Js.string "modal is-active"
+;;
+
+let disable_modal id =
+    Dom_html.(getElementById_exn id)##.className := Js.string "modal"
+;;
+
+let input_value input =
+    Js.to_string input##.value 
+
+let not_empty_string = Fn.compose not String.is_empty
+
+let setup_lobby_modal host =
+    let btn = get_btn "lobby-start-btn" in
+    if not host then (
+        btn##.style##.display := Js.string "none";
+    ) else (
+        btn##.onclick := Dom_html.handler (fun _ ->
+            Js._false
+        );
+    )
+;;
+
+let setup_join_modal () =
+    let join_btn = get_btn "join-modal-btn" in
+    let name = get_input "join-modal-name" in
+    let game = get_input "join-modal-game-id" in
+    let server = get_input "join-modal-server" in
+    join_btn##.onclick := Dom_html.handler (fun _ ->
+        (* Verify each field *)
+        let name = input_value name in
+        let game = input_value game in
+        let server = input_value server in
+        if not_empty_string name
+           && not_empty_string game
+           && not_empty_string server then (
+               disable_modal "join-modal";
+               setup_lobby_modal false;
+               enable_modal "lobby-modal";
+       );
+
+        Js._false
+    )
+;;
+
+let select_value (select : Dom_html.selectElement Js.t) : string =
+    let item = select##.options##item select##.selectedIndex in
+    item
+    |> Js.Opt.to_option
+    |> function
+       | Some item -> item##.text |> Js.to_string
+       | None -> failwith "expected some item"
+;;
+
+let setup_host_modal () =
+    let host_btn = get_btn "host-modal-btn" in
+    let name = get_input "host-modal-name" in
+    let num_players = get_select "host-modal-players" in
+    let server = get_input "host-modal-server" in
+
+    host_btn##.onclick := Dom_html.handler (fun _ ->
+        let name = input_value name in
+        let _player_count = select_value num_players |> Int.of_string in
+        let server = input_value server in
+
+        if not_empty_string name 
+           && not_empty_string server then (
+               disable_modal "host-modal";
+               setup_lobby_modal true;
+               enable_modal "lobby-modal"
+       );
+
+        Js._false
+    )
+;;
+
+let initialize_modals () =
+    let host_btn = get_btn "host-btn" in
+    let join_btn = get_btn "join-btn" in
+
+    host_btn##.onclick := Dom_html.handler (fun _ ->
+        disable_modal "host-or-join-modal";
+        enable_modal "host-modal";
+        Js._false
+    );
+
+    join_btn##.onclick := Dom_html.handler (fun _ ->
+        disable_modal "host-or-join-modal";
+        enable_modal "join-modal";
+        Js._false
+    );
+
+    setup_join_modal();
+    setup_host_modal();
+;;
+
 let attach () =
     Dom_html.window##.onload := Dom_html.handler (fun _ ->
+        initialize_modals();
+
         let map_canvas = get_canvas map_canvas in
         let gui_canvas = get_canvas gui_canvas in
         Canvas.fix_canvas_dpi map_canvas;

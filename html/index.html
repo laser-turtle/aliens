@@ -9,6 +9,16 @@
         <link rel="stylesheet" href="bulma.min.css">
         <link rel="stylesheet" href="style.css">
         <style>
+
+        .is-huge {
+            font-size: 3rem;
+        }
+
+        .lobby-start-button {
+            display: flex;
+            flex-direction: column;
+        }
+
         .attack-choice-container { 
             position: absolute;
             z-index: 2;
@@ -30,6 +40,16 @@
             display: inline-block;
         }
 
+        .game-id {
+            float: right;
+            background-color: #349e59;
+            padding: 0.2rem;
+            border-radius: 0.2rem;
+        }
+
+        .lobby-player-count {
+        }
+
         .active {
             background-color: #CCFFCC;
             font-size: 1.25rem;
@@ -39,6 +59,14 @@
         }
 
         .event-list {
+        }
+
+        a.panel-block {
+            cursor: initial;
+        }
+
+        #lobby-modal-host-start {
+            min-height: 0.2rem;
         }
 
         #canvas-container {
@@ -100,7 +128,6 @@
                             <p id="sector-history-title" class="title">Sector History</p>
                             <div class="content">
                                 <div id="sector-history" class="sector-history">
-                                    <strong>01[</strong>&nbsp;&nbsp;&nbsp;<strong>]</strong>
                                 </div> 
                             </div>
                         </article>
@@ -111,11 +138,6 @@
                                 <span id="player-type" class="player" style="float:right">Human</span></p>
                             <p id="round-text" class="subtitle">Round 0/39</p>
                             <div id="player-turns">
-                                <span class="player">Nick</span>
-                                <span class="player active">Rachel</span>
-                                <span class="player">Dima</span>
-                                <span class="player">Hayden</span>
-                                <span class="player">Computer 1</span>
                             </div>
                         </div>
                     </div>
@@ -145,9 +167,6 @@
                             <div class="content">
                                 <p class="title">Events</p>
                                 <div id='event-list-content' class="event-list">
-                                    <p>Nick: Noise in sector A01</p>
-                                    <p>Rachel: Silence in all sectors</p>
-                                    <p>Hayden: Attacking sector U03</p>
                                 </div>
                             </div>
                         </article>
@@ -159,8 +178,124 @@
             <button id='attack' class='button is-danger'>Attack</button>
             <button id='dont-attack' class='button is-light'>Don't Attack</button>
         </div>
+        <!-- Multiplayer Modal Flow -->
+        <div id='host-or-join-modal' class='modal is-active'>
+            <div class='modal-background'></div>
+            <div class='modal-content has-text-centered'>
+                <div class='box has-text-centered' style="display:inline-block;padding:4vw">
+                    <button id='host-btn' class="button is-success is-huge">Host</button>
+                    <div style="margin:1.5rem"><span style="font-size:2.0rem">- OR -</span></div>
+                    <button id='join-btn' class="button is-success is-huge">Join</button>
+                </div>
+            </div>
+        </div>
+        <!-- Host Modal -->
+        <div id='host-modal' class='modal'>
+            <div class='modal-background'></div>
+            <div class='modal-content'>
+                <div class='box'>
+                    <div class='field'>
+                        <label class='label'>Your Name</label>
+                        <div class='control'>
+                            <input id='host-modal-name' class='input' type='text' placeholder='Name'>
+                        </div>
+                    </div>
+                    <div class='field'>
+                        <label class='label'>Number of Players</label>
+                        <div class='control'>
+                            <span class='select'>
+                                <select id='host-modal-players'>
+                                    <option >2</option>
+                                    <option >3</option>
+                                    <option selected>4</option>
+                                    <option >5</option>
+                                    <option >6</option>
+                                    <option >7</option>
+                                    <option >8</option>
+                                </select>
+                            </span>
+                        </div>
+                    </div>
+                    <div class='field'>
+                        <label class='label'>Game Server</label>
+                        <div class='control'>
+                            <input id='host-modal-server' class='input' type='text' 
+                                placeholder='1.2.3.4' value='mc.laserturtle.net'>
+                        </div>
+                    </div>
+                    <div class='field'>
+                        <p class='control'>
+                        <button id='host-modal-btn' class='button is-success'>Host</button>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Lobby Modal -->
+        <div id='lobby-modal' class='modal'>
+            <div class='modal-background'></div>
+            <div class='modal-content'>
+                <div class='box' style="padding:0">
+                <article class='panel is-success'>
+                    <p class='panel-heading'>
+                    <span>Game Lobby</span> <span id='game-id' class="game-id">ABCD</span>
+                    -
+                    <span id='player-count' class="lobby-player-count">2/8</span>
+                    </p> 
+                    <p class="panel-tabs"></p>
+                    <a class="panel-block">
+                       Some Player
+                    </a>
+                    <a class="panel-block">
+                       Player 2 
+                    </a>
+                    <div id='lobby-modal-host-start' class='lobby-start-button'>
+                        <button id='lobby-start-btn' class='button is-success' style='align-self:end;margin:0.5rem'>Start</button>
+                    </div>
+                </article>
+                </div>
+            </div> 
+        </div>
+        <!-- Join Modal -->
+        <div id='join-modal' class='modal'>
+            <div class='modal-background'></div>
+            <div class='modal-content'>
+                <div class='box'>
+                    <div class='field'>
+                        <label class='label'>Your Name</label>
+                        <div class='control'>
+                            <input id='join-modal-name' class='input' type='text' placeholder='Name'>
+                        </div>
+                    </div>
+                    <div class='field'>
+                        <label class='label'>Game ID</label>
+                        <div class='control'>
+                            <input id='join-modal-game-id' class='input' type='text' placeholder='ABCD'>
+                        </div>
+                    </div>
+                    <div class='field'>
+                        <label class='label'>Game Server</label>
+                        <div class='control'>
+                            <input id='join-modal-server' class='input' type='text' 
+                                placeholder='1.2.3.4' value='mc.laserturtle.net'>
+                        </div>
+                    </div>
+                    <div class='field'>
+                        <p class='control'>
+                        <button id='join-modal-btn' class='button is-success'>Join</button>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
         <script type="text/javascript">
             "use strict";
+            
+            function setupLobby(server) {
+                // Use a websocket to connect to the server
+                // and get our id
+
+            }
         </script>
     </body>
 </html>

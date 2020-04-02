@@ -93,8 +93,14 @@ type state = {
 }
 [@@deriving show{with_path=false}]
 
+let get_player (state : state) (pid : Player.id) =
+    List.find_exn state.players ~f:(fun p ->
+        p.id = pid
+    )
+;;
+
 let player_name (state : state) (id : Player.id) : string =
-    List.nth_exn state.players id |> fun p -> p.name
+    (get_player state id).name
 ;;
 
 let event_to_string (state : state) (event : Event.t) : string =
@@ -114,7 +120,8 @@ let event_to_string (state : state) (event : Event.t) : string =
 
 let random_state = Base.Random.State.make_self_init()
 
-let gen_players num_players alien_spawn human_spawn : Player.t list =
+let gen_players players alien_spawn human_spawn : Player.t list =
+    let num_players = List.length players in
     let num_aliens =
         if Int.rem num_players 2 = 0 then
             num_players / 2
@@ -122,7 +129,7 @@ let gen_players num_players alien_spawn human_spawn : Player.t list =
             num_players / 2 + 1
     in
     let players =
-        List.init num_players ~f:(fun i ->
+        List.mapi players ~f:(fun i name ->
             let is_alien = i < num_aliens in
             Player.{
                 id = i;
@@ -130,11 +137,11 @@ let gen_players num_players alien_spawn human_spawn : Player.t list =
                 sector_history = [];
                 team = if is_alien then Alien else Human;
                 alive = Alive;
-                name = Printf.sprintf "Player %d" i;
+                name;
             }
         )
         |> List.permute ~random_state
-        |> List.mapi ~f:(fun id player -> Player.{player with id})
+        (*|> List.mapi ~f:(fun id player -> Player.{player with id})*)
     in
     players
 ;;
@@ -197,16 +204,28 @@ let next_player_action (map : SectorMap.t) (player : Player.t)  =
     NextAction.CurrentPlayerPickMove (get_player_moves map player)
 ;;
 
-let new_game (num_players : int) (map : SectorMap.t) = 
-    let players = gen_players num_players map.alien_spawn map.human_spawn in
+let empty_game = {
+    players = [];
+    round = 0;
+    max_rounds = 39;
+    current_player = 0;
+    events = [];
+    map = SectorMap.empty;
+    next_players = [];
+    next = NextAction.CurrentPlayerPickMove HexMap.Set.empty;
+}
+
+let new_game (players : string list) (map : SectorMap.t) = 
+    let players = gen_players players map.alien_spawn map.human_spawn in
+    let first_player = List.hd_exn players in
     {
     players;
     round = 0;
     max_rounds;
     map;
-    current_player = 0;
-    next_players = generate_next_players 0 players;
-    next = next_player_action map List.(hd_exn players);
+    current_player = first_player.id;
+    next_players = generate_next_players first_player.id players;
+    next = next_player_action map first_player;
     events = [];
 }
 
@@ -244,10 +263,6 @@ let change_name (state : state) (pid : Player.id) (name : string) : state =
     ) else (
         state
     )
-;;
-
-let get_player (state : state) (pid : Player.id) =
-    List.nth_exn state.players pid
 ;;
 
 let update_next (state : state) (next : NextAction.t) : state = {
@@ -306,18 +321,19 @@ let check_for_end_game (state : state) : state =
 ;;
 
 let current_player (state : state) : Player.t =
-    List.nth_exn state.players state.current_player
+    get_player state state.current_player
 ;;
 
 let change_player (state : state) =
     let next_state =
         match state.next_players with
         | [] -> 
+            let first_player = List.hd_exn state.players in
             { state with 
                 round = state.round + 1;
-                current_player = 0;
-                next_players = generate_next_players 0 state.players;
-                next = next_player_action state.map List.(hd_exn state.players);
+                current_player = first_player.id;
+                next_players = generate_next_players first_player.id state.players;
+                next = next_player_action state.map first_player;
             }
             (* TODO - check win conditions, huamns could all be dead? *)
         | hd :: tl -> { 

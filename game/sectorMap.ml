@@ -7,6 +7,13 @@ type t = {
     escape_hatches : HexCoord.t list;
 }
 
+let empty = {
+    map = HexMap.empty;
+    alien_spawn = HexCoord.make 0 0 0;
+    human_spawn = HexCoord.make 0 0 0;
+    escape_hatches = [];
+}
+
 let pp _fmt _t =
     ()
 

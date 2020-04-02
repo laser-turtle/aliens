@@ -1,3 +1,5 @@
+open Ocaml_aliens_game
+
 (* We can be the host or not 
  *
  * Host has the canonical game state
@@ -7,3 +9,7 @@
  * After host creates game, we get an id
  * and start waiting for connections.
  *)
+
+let step_host (_game : Game.state) =
+    ()
+;;

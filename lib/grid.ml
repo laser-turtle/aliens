@@ -1,5 +1,6 @@
 open! Base
 open! Js_of_ocaml
+open Ocaml_aliens_game
 
 let float = Caml.float
 

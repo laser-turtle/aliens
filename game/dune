@@ -1,12 +1,11 @@
 (library
- (name ocaml_aliens)
+ (name ocaml_aliens_game)
  (libraries
     base
     js_of_ocaml
     ppx_deriving
     ppx_compare
     ppx_sexp_conv
-    ocaml_aliens_game
     )
   (preprocess (pps js_of_ocaml-ppx ppx_compare ppx_sexp_conv ppx_deriving.show))
- )
+  )

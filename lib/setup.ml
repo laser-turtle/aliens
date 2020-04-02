@@ -1,5 +1,6 @@
 open! Base
 open! Js_of_ocaml
+open Ocaml_aliens_game
 
 let map_canvas = "map-canvas"
 let gui_canvas = "gui-canvas"
@@ -9,7 +10,7 @@ let get_canvas = Canvas.get_canvas
 let reset_canvas_size = Canvas.reset_canvas_size canvas_parent 
 
 let game = 
-    ref (Game.new_game 4 (Game.generate_map()))
+    ref (Game.new_game ["P1"; "P2"] (Game.generate_map()))
 
 let apply_move (game : Game.state) (move : Game.Move.t) : Game.state =
     Game.apply game move
@@ -447,12 +448,15 @@ let setup_join_modal () =
 
                let module U = Js.Unsafe in
                let f = U.global##.connectToLobby in
-               U.fun_call f [|
-                   U.inject Js.(string name);
-                   U.inject Js.(string game); 
-                   U.inject Js.(string server);
-                   U.inject callback;
-                |] |> ignore;
+               let _send_callback =
+                   U.fun_call f [|
+                       U.inject Js.(string name);
+                       U.inject Js.(string game); 
+                       U.inject Js.(string server);
+                       U.inject callback;
+                    |]
+               in
+               ()
        );
 
         Js._false
@@ -499,6 +503,7 @@ let setup_host_modal () =
                );
                enable_modal "lobby-modal";
 
+
                let callback = Js.wrap_callback (fun data ->
                    Caml.print_endline (Js._JSON##stringify data |> Js.to_string);
                    match Js.to_string data##._type with
@@ -512,12 +517,15 @@ let setup_host_modal () =
 
                let module U = Js.Unsafe in
                let f = U.global##.setupLobby in
-               U.fun_call f [|
-                   U.inject Js.(string name);
-                   U.inject player_count; 
-                   U.inject Js.(string server);
-                   U.inject callback;
-                |] |> ignore;
+               let _send_callback =
+                   U.fun_call f [|
+                       U.inject Js.(string name);
+                       U.inject player_count; 
+                       U.inject Js.(string server);
+                       U.inject callback;
+                    |]
+               in
+               ()
        );
 
         Js._false

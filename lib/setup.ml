@@ -277,8 +277,40 @@ let do_decide_to_attack (info : Grid.context_info) (coord : HexCoord.t) apply_mo
     div##.style##.top := Js.string (y ^ "px");
 ;;
 
-let do_game_over _end_state =
-    ()
+let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
+    enable_modal "game-over-modal";
+    let game_result = get_elem_id "game-result" in
+    let survived = get_elem_id "survived" in
+    let escaped = get_elem_id "escaped" in
+    let killed = get_elem_id "killed" in
+
+    let win_string =
+        match end_state.condition with 
+        | AllHumansEscaped -> "Humans Win!"
+        | AllHumansKilled -> "hAliens Win!"
+        | AllHumansEscapedOrKilled -> "Mixed - Some humans escaped"
+        | RoundLimit -> "Round Limit Reached"
+    in
+    game_result##.innerHTML := Js.string win_string;
+
+    let open Game in
+    let set_control_html control state =
+        let players = List.filter players ~f:(fun p -> Poly.equal p.alive state) in
+        match players with
+        | [] -> ()
+        | lst ->
+            let str = List.fold ~init:"" lst ~f:(fun str p ->
+                if Poly.(p.Player.alive = state) then (
+                    (p.name ^ " (" ^ Player.show_team p.team ^ ") ") ^ str
+                ) else 
+                    str
+            ) in
+            control##.innerHTML := Js.string str;
+    in
+
+    set_control_html survived Player.Alive;
+    set_control_html escaped Player.Escaped;
+    set_control_html killed Player.Killed;
 ;;
 
 let rec pick_move_click moves click layout x y =
@@ -361,7 +393,7 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
     | GameOver end_state ->
         clear_gui_handlers();
         clear_gui();
-        do_game_over end_state;
+        do_game_over state.players end_state;
     | _ -> 
         clear_gui_handlers();
         clear_gui();

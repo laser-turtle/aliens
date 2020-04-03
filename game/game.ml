@@ -35,12 +35,14 @@ end
 module EndState = struct
     type condition = AllHumansEscaped
                    | AllHumansKilled
+                   | AllHumansEscapedOrKilled
                    | RoundLimit
     [@@deriving show{with_path=false}, yojson]
 
     type t = {
         humans_escaped : Player.t list;
         humans_killed : Player.t list;
+        aliens_killed : Player.t list;
         condition : condition;
     }
     [@@deriving show{with_path=false}, yojson]
@@ -312,10 +314,12 @@ let get_players_from_team (players : Player.t list) (team : Player.team) : Playe
 
 let generate_end_stats (state : state) (type_ : EndState.condition) : EndState.t = 
     let humans = get_players_from_team state.players Player.Human in
+    let aliens = get_players_from_team state.players Player.Alien in
     let filter = Player.filter_alive humans in
     {
       humans_escaped = filter Player.Escaped;
       humans_killed = filter Player.Killed;
+      aliens_killed = Player.filter_alive aliens Player.Killed;
       condition = type_;
     }
 ;;
@@ -336,10 +340,15 @@ let check_for_end_game (state : state) : state =
         let escaped = Player.filter_alive humans Player.Escaped in
         let killed = Player.filter_alive humans Player.Killed in
 
-        if List.length escaped = len then (
+        let num_escaped = List.length escaped in
+        let num_killed = List.length killed in
+
+        if num_escaped = len then (
             game_over EndState.AllHumansEscaped
-        ) else if List.length killed = len then (
+        ) else if num_killed = len then (
             game_over EndState.AllHumansKilled
+        ) else if num_escaped + num_killed = len then (
+            game_over EndState.AllHumansEscapedOrKilled
         ) else (
             state
         )

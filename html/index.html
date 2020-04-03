@@ -14,6 +14,15 @@
             font-size: 3rem;
         }
 
+        h4.game-over-heading {
+            margin-top: 0.25rem;
+            margin-bottom: 0.25rem !important;
+        }
+
+        .game-over-body {
+            margin-bottom: 1.0rem !important;
+        }
+
         .lobby-start-button {
             display: flex;
             flex-direction: column;
@@ -285,6 +294,30 @@
                         </p>
                     </div>
                 </div>
+            </div>
+        </div>
+        <!-- Game Over Modal -->
+        <div id='game-over-modal' class='modal'>
+            <div class='modal-background'></div>
+            <div class='modal-content'>
+                <article class='box'>
+                    <p class='title'>Game Over <span id='game-result'>Aliens Win!</span></p>
+                    <p class='subtitle'>Game Stats</p>
+                    <div class='content'>
+                        <h4 class='game-over-heading'>Survived</h4>
+                        <div class='game-over-body' id='survived'>
+                            No one
+                        </div>
+                        <h4 class='game-over-heading'>Escaped</h4>
+                        <div class='game-over-body' id='escaped'>
+                            No one
+                        </div>
+                        <h4 class='game-over-heading' class='game-over-heading'>Killed</h4>
+                        <div class='game-over-body' id='killed'>
+                            No one
+                        </div>
+                    </div>
+                </article>
             </div>
         </div>
     </body>

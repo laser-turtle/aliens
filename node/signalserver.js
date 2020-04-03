@@ -130,6 +130,7 @@ wss.on('connection', function connection(ws) {
 			  console.log("join-lobby");
 			  console.log(msg);
 			  console.log(lobbies);
+			  msg.game_id = msg.game_id.toUpperCase();
 			  if (msg.game_id in lobbies) {
 			  	console.log("game exists");
 				  if (is_lobby_full(msg.game_id))

@@ -43,6 +43,8 @@ let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
         let className =
             if pid = state.current_player && pid = my_id then (
                 "your-turn"
+            ) else if pid = my_id then (
+                "you-but-not-active"
             ) else if pid = state.current_player then (
                 "active"
             ) else ""

@@ -14,6 +14,75 @@ let empty = {
     escape_hatches = [];
 }
 
+let map_to_yojson (map : Sector.t HexMap.t) : Yojson.Safe.t =
+    let items = Map.fold map ~init:[] ~f:(fun ~key ~data lst ->
+        `List [HexCoord.to_yojson key; Sector.to_yojson data] :: lst
+    ) in
+    `List items
+;;
+
+let to_yojson (t : t) : Yojson.Safe.t =
+    `Assoc [
+        "map", map_to_yojson t.map;
+        "alien_spawn", HexCoord.to_yojson t.alien_spawn;
+        "human_spawn", HexCoord.to_yojson t.human_spawn;
+        "escape_hatches", `List (List.map ~f:HexCoord.to_yojson t.escape_hatches);
+    ]
+;;
+
+let force_ok = function
+    | Ok o -> o
+    | Error err -> failwith err
+
+let map_of_yojson (json : Yojson.Safe.t) =
+    let open Yojson.Safe.Util in
+    match json with
+    | `List lst -> 
+        (try
+            List.map lst ~f:(fun item ->
+                match item with
+                | `List [coord; sector] ->
+                    let coord = HexCoord.of_yojson coord |> force_ok in
+                    let sector = Sector.of_yojson sector |> force_ok in
+                    (coord, sector)
+                | _ -> failwith "expected two coords"
+            )
+            |> Map.of_alist (module HexCoord) 
+            |> (function
+                | `Ok map -> map
+                | `Duplicate_key _ -> failwith "duplicate key"
+            )
+            |> fun map -> Ok map
+        with _ ->
+            Error "failed to convert map"
+        )
+    | _ -> Error "expected tuple"
+;;
+
+let of_yojson json =
+    let open Yojson.Safe.Util in
+    let open Result.Monad_infix in
+    member "map" json |> map_of_yojson >>= fun map ->
+    member "alien_spawn" json |> HexCoord.of_yojson >>= fun alien_spawn ->
+    member "human_spawn" json |> HexCoord.of_yojson >>= fun human_spawn ->
+    (try
+        json
+        |> member "escape_hatches"
+        |> to_list
+        |> List.map ~f:(fun h -> HexCoord.of_yojson h |> force_ok)
+        |> fun lst -> Ok lst
+    with _ ->
+        Error "escape hatch failure"
+    )
+    >>= fun escape_hatches ->
+    Ok {
+        map;
+        alien_spawn;
+        human_spawn;
+        escape_hatches;
+    }
+;;
+
 let pp _fmt _t =
     ()
 

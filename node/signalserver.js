@@ -34,28 +34,29 @@ function is_lobby_full(game_id) {
 	return full;
 }
 
-function get_lobby_info(game_id) {
+function get_lobby_info(game_id, player_id) {
 	return JSON.stringify({
 		type: 'lobby-update',
+		player_id: player_id,
 		data: lobbies[game_id].lobby_info,
 	})
 }
 
-function send_to_lobby_exclude_host(game_id, msg) {
+function send_to_lobby_exclude_list(game_id, data, excludes) {
 	var sockets = lobbies[game_id].sockets;
 	for (var i = 1; i < sockets.length; ++i)
 	{
-		if (sockets[i].alive) {
-			sockets[i].ws.send(msg);
+		if (!(i in excludes) && sockets[i].alive) {
+			sockets[i].ws.send(data);
 		}
 	}
 }
 
 function update_lobby(game_id) {
-	let json = get_lobby_info(game_id);
 	var sockets = lobbies[game_id].sockets;
 	for (var i = 0; i < sockets.length; ++i)
 	{
+		let json = get_lobby_info(game_id, i);
 		if (sockets[i].alive) {
 			sockets[i].ws.send(json);
 		}
@@ -83,7 +84,7 @@ wss.on('connection', function connection(ws) {
   ws.on('close', (event) => {
 	  if (socket_id == 0) {
 	  	delete lobbies[game_id];
-	  } else {
+	  } else if (game_id in lobbies) {
 		  kill_socket(game_id, socket_id);
 		  lobbies[game_id].sockets[0].ws.send(JSON.stringify({
 			  type: 'player-dropped',
@@ -94,6 +95,7 @@ wss.on('connection', function connection(ws) {
 
   ws.on('message', (message) => {
 	  let msg = JSON.parse(message);
+	  console.log("MSG from", socket_id, "for", game_id, msg);
 	  switch (msg.type) {
 		  case 'new-lobby':
 			  game_id = generateID();	
@@ -111,12 +113,17 @@ wss.on('connection', function connection(ws) {
 			break;
 
 	      case 'game-update':
-			  send_to_lobby_exclude_host(msg.game_id, msg.data);
+			  let data = {
+				  type: 'game-update',
+				  data: msg.data,
+			  };
+			  send_to_lobby_exclude_list(game_id, JSON.stringify(data), msg.exclude);
 			  break;
 
 		  case 'player-update':
 			  msg.player_id = socket_id;
-			  lobbies[msg.game_id].sockets[0].send(msg.data);
+			  let json_result = JSON.stringify(msg);
+			  lobbies[game_id].sockets[0].ws.send(json_result);
 			  break;
 
 		  case 'join-lobby':

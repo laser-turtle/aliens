@@ -373,7 +373,7 @@ let draw_top_axis (info : context_info) =
     context##restore;
 ;;
 
-let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : context_info =
+let calculate_info (canvas : canvas) map_w map_h =
     let context = canvas##getContext Dom_html._2d_ in
     let client_wf = canvas##.clientWidth |> Float.of_int in
     let client_hf = canvas##.clientHeight |> Float.of_int in
@@ -387,7 +387,7 @@ let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : context_info 
 
     let layout = Layout.make Layout.flat Point.(make size size) origin in
 
-    let context_info : context_info = {
+    {
         canvas;
         context;
         origin;
@@ -397,15 +397,22 @@ let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : context_info 
         layout;
         client_size = Point.make client_wf client_hf;
         grid_size;
-    } in
+    }
+;;
+
+let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : unit =
+    let info = calculate_info canvas map_w map_h in
+    let context = info.context in
+    let origin = info.origin in
+    let size = info.hex_size in
+    let grid_size = info.grid_size in
 
     draw_background context origin size grid_size;
-    draw_top_axis context_info;
+    draw_top_axis info;
 
     context##.fillStyle := Js.(string "white");
     context##.strokeStyle := Js.(string Colors.hex_border);
     Map.iteri map ~f:(fun ~key ~data ->
-        draw_hex_item context_info key data
+        draw_hex_item info key data
     );
-    context_info
 ;;

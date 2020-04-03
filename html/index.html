@@ -50,8 +50,13 @@
         .lobby-player-count {
         }
 
-        .active {
+        .your-turn {
             background-color: #CCFFCC;
+            font-size: 1.25rem;
+        }
+
+        .active {
+            background-color: #FFFFCC;
             font-size: 1.25rem;
         }
 
@@ -150,7 +155,7 @@
                             <button id="noise-in-any-sector-btn" class="button is-warning action-button" disabled>NOISE IN ANY SECTOR</button>
                             <button id="silence-in-all-sectors-btn" class="button is-dark action-button" disabled>SILENCE IN ALL SECTORS</button>
                             <button id="safe-btn" class="button is-success action-button" disabled>SAFE SECTOR</button>
-                            <button id="advance" class="button">STEP</button>
+                            <button id="advance" class="button" style="display:none">STEP</button>
                             </div>
                         </div>
                         <div class="tile is-parent" height="100%" style="flex-grow:3">

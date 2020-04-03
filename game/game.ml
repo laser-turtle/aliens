@@ -7,15 +7,15 @@ let max_rounds = 39
 module Player = struct
     type team = Alien
               | Human
-    [@@deriving show{with_path=false}]
+    [@@deriving show{with_path=false}, yojson]
 
     type id = int
-    [@@deriving show{with_path=false}]
+    [@@deriving show{with_path=false}, yojson]
 
     type alive = Alive
                | Killed
                | Escaped
-    [@@deriving show{with_path=false}]
+    [@@deriving show{with_path=false}, yojson]
 
     type t = {
         id : id;
@@ -25,7 +25,7 @@ module Player = struct
         alive : alive; (* Maybe more than bool *)
         name : string;
     }
-    [@@deriving show{with_path=false}]
+    [@@deriving show{with_path=false}, yojson]
 
     let filter_alive (tlst : t list) (alive : alive) : t list =
         List.filter tlst ~f:(fun p -> Poly.equal p.alive alive)
@@ -36,14 +36,14 @@ module EndState = struct
     type condition = AllHumansEscaped
                    | AllHumansKilled
                    | RoundLimit
-    [@@deriving show{with_path=false}]
+    [@@deriving show{with_path=false}, yojson]
 
     type t = {
         humans_escaped : Player.t list;
         humans_killed : Player.t list;
         condition : condition;
     }
-    [@@deriving show{with_path=false}]
+    [@@deriving show{with_path=false}, yojson]
 end
 
 module NextAction = struct
@@ -53,8 +53,9 @@ module NextAction = struct
            | PickNoiseInAnySector
            | ConfirmSafeSector
            | ConfirmSilenceInAllSectors
+           | WaitingForPlayer (* Only used in multiplayer *)
            | GameOver of EndState.t
-           [@@deriving show{with_path=false}]
+           [@@deriving show{with_path=false}, yojson]
 end
 
 module Move = struct
@@ -66,7 +67,7 @@ module Move = struct
            | AcceptSafeSector
            | AcceptSilenceInAllSectors
            | AcceptNoiseInYourSector
-           [@@deriving show{with_path=false}]
+           [@@deriving show{with_path=false}, yojson]
 
     type invalid = unit
 end
@@ -77,8 +78,9 @@ module Event = struct
            | Silence of Player.id
            | Attack of Player.id * HexCoord.t
            | Escape of Player.id * HexCoord.t * int (* pod *)
+           | PlayerKilled of Player.id * HexCoord.t * Player.id (* who * where * by *)
            (* Win conditions ? *)
-           [@@deriving show{with_path=false}]
+           [@@deriving show{with_path=false}, yojson]
 end
 
 type state = {
@@ -91,7 +93,7 @@ type state = {
     next : NextAction.t;
     events : Event.t list;
 }
-[@@deriving show{with_path=false}]
+[@@deriving show{with_path=false}, yojson]
 
 let get_player (state : state) (pid : Player.id) =
     List.find_exn state.players ~f:(fun p ->
@@ -101,6 +103,10 @@ let get_player (state : state) (pid : Player.id) =
 
 let player_name (state : state) (id : Player.id) : string =
     (get_player state id).name
+;;
+
+let player_team (state : state) (id : Player.id) : Player.team =
+    (get_player state id).team
 ;;
 
 let event_to_string (state : state) (event : Event.t) : string =
@@ -116,32 +122,51 @@ let event_to_string (state : state) (event : Event.t) : string =
             (player_name state id)
             (sector_loc coord)
     | Escape (id, _, n) -> Printf.sprintf "%s: ESCAPED IN POD %d!" (player_name state id) n
+    | PlayerKilled (who, where, by) ->
+            Printf.sprintf "%s %s killed by %s %s in %s"
+                (Player.show_team (player_team state who))
+                (player_name state who)
+                (sector_loc where)
+                (Player.show_team (player_team state by))
+                (player_name state by)
 ;;
 
 let random_state = Base.Random.State.make_self_init()
 
-let gen_players players alien_spawn human_spawn : Player.t list =
-    let num_players = List.length players in
+let gen_players names alien_spawn human_spawn : Player.t list =
+    let num_players = List.length names in
     let num_aliens =
         if Int.rem num_players 2 = 0 then
             num_players / 2
         else
             num_players / 2 + 1
     in
+    let players = 
+        num_players
+        |> List.init ~f:(fun i ->
+            if i < num_aliens then Player.Alien else Human
+        ) 
+        |> List.permute ~random_state 
+        |> List.zip names 
+        |> function
+           | List.Or_unequal_lengths.Ok lst -> lst
+           | _ -> failwith "Impossible case 1"
+    in
     let players =
-        List.mapi players ~f:(fun i name ->
-            let is_alien = i < num_aliens in
+        List.mapi players ~f:(fun i (name, team) ->
             Player.{
                 id = i;
-                current_pos = if is_alien then alien_spawn else human_spawn;
+                current_pos = 
+                    (match team with
+                    | Alien -> alien_spawn
+                    | Human -> human_spawn);
                 sector_history = [];
-                team = if is_alien then Alien else Human;
+                team = team;
                 alive = Alive;
                 name;
             }
         )
         |> List.permute ~random_state
-        (*|> List.mapi ~f:(fun id player -> Player.{player with id})*)
     in
     players
 ;;
@@ -180,14 +205,15 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
     |> remove map.human_spawn
 ;;
 
-let generate_next_players (current_player : int) (players : Player.t list) : Player.id list =
-    players
-    |> List.filter ~f:(fun p ->
-        p.Player.id > current_player &&
-        match p.Player.alive with
-        | Alive -> true
-        | Killed | Escaped -> false
-    )
+let generate_next_players (current_player : Player.id) (players : Player.t list) : Player.id list =
+    (* Need to drop all players until (and including) current player *)
+    let lst =
+        List.drop_while players ~f:(fun p ->
+            p.id <> current_player
+        )
+    in
+    lst
+    |> List.tl_exn
     |> List.map ~f:(fun p -> p.Player.id)
 ;;
 
@@ -246,8 +272,8 @@ module DangerousAction = struct
 end
 
 let update_player_list (players : Player.t list) (pid : Player.id) ~f =
-    List.mapi players ~f:(fun i p -> 
-        if i = pid then f p else p
+    List.map players ~f:(fun p -> 
+        if p.id = pid then f p else p
     )
 ;;
 
@@ -390,6 +416,10 @@ let add_event (event : Event.t) (state : state) : state = {
     state with events = event :: state.events
 }
 
+let add_events (new_events : Event.t list) (state : state) : state = {
+    state with events = List.append new_events state.events
+}
+
 let do_alien_attack (state : state) : apply_result =
     let attacker = current_player state in
     let players_in_sector =
@@ -407,8 +437,11 @@ let do_alien_attack (state : state) : apply_result =
             )
         )
     in
+    let killed = List.map players_in_sector ~f:(fun p ->
+        Event.PlayerKilled (p.id, p.current_pos, attacker.id)
+    ) in
     let event = Event.Attack (attacker.id, attacker.current_pos) in
-    Ok (state |> add_event event |> change_player)
+    Ok (state |> add_events (killed @ [event]) |> change_player)
 ;;
 
 let do_safe_sector (state : state) : apply_result =

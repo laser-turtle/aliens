@@ -6,6 +6,12 @@ open! Base
 
 type 'a t = (HexCoord.t, 'a, HexCoord.comparator_witness) Map.t
 
+let to_yojson _t : Yojson.Safe.t =
+    failwith "Unimplemented"
+
+let of_yojson _json =
+    failwith "Unimplemented"
+
 let pp _fmt _t = 
     ()
 
@@ -28,6 +34,28 @@ module Set = struct
     let remove = Set.remove
     let mem = Set.mem
     let iter = Set.iter
+
+    let to_yojson (t : t) : Yojson.Safe.t =
+        `List (Set.fold t ~init:[] ~f:(fun lst item ->
+            HexCoord.to_yojson item :: lst
+        ))
+
+    let force_ok = function
+        | Ok ok -> ok
+        | Error err -> failwith err
+
+    let of_yojson json =
+        let open Yojson.Safe.Util in
+        match json with
+        | `List lst ->
+            (try
+                List.map lst ~f:(fun hex ->
+                    HexCoord.of_yojson hex |> force_ok
+                )
+                |> of_list
+                |> fun set -> Ok set
+            with _ -> Error "failed to parse set")
+        | _ -> Error "expected list for set" 
 end
 
 let empty : 'a t = Map.empty (module HexCoord)

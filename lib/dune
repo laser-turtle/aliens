@@ -6,7 +6,8 @@
     ppx_deriving
     ppx_compare
     ppx_sexp_conv
+    ppx_deriving_yojson
     ocaml_aliens_game
     )
-  (preprocess (pps js_of_ocaml-ppx ppx_compare ppx_sexp_conv ppx_deriving.show))
+  (preprocess (pps js_of_ocaml-ppx ppx_compare ppx_sexp_conv ppx_deriving.show ppx_deriving_yojson))
  )

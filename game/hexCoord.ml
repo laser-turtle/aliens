@@ -11,7 +11,7 @@ module T = struct
             q : int;
             r : int;
         }
-        [@@deriving compare, sexp, show]
+        [@@deriving compare, sexp, show, yojson]
 
     let make q r s =
         Cube {q;r;s}

@@ -5,4 +5,4 @@ type t = Dangerous
        | HumanSpawn
        | Safe
        | EscapeHatch of int
-       [@@deriving show{with_path=false}]
+       [@@deriving show{with_path=false}, yojson]

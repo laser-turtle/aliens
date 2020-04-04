@@ -4,20 +4,12 @@ open JsUtil
 open Ocaml_aliens_game
 
 let map_canvas = "map-canvas"
+let annot_canvas = "annot-canvas"
 let gui_canvas = "gui-canvas"
 let canvas_parent = "canvas-container"
 
 let get_canvas = Canvas.get_canvas
 let reset_canvas_size = Canvas.reset_canvas_size canvas_parent 
-
-    (*
-let apply_move (game : Game.state) (move : Game.Move.t) : Game.state =
-    Game.apply game move
-    |> function
-       | Ok state -> state
-       | Error _ -> Caml.print_endline "GAME ERRORED"; game
-;;
-*)
 
 let set_round_counter (game : Game.state) : unit =
     let round = Dom_html.getElementById_exn "round-text" in
@@ -26,8 +18,6 @@ let set_round_counter (game : Game.state) : unit =
 
 let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
     set_round_counter state;
-    Printf.sprintf "MY ID %d" my_id |> Caml.print_endline;
-    Game.show_state state |> Caml.print_endline;
     let player_content = Dom_html.getElementById_exn "player-turns" in
     let player_type = Dom_html.getElementById_exn "player-type" in
     let player_string =
@@ -55,7 +45,7 @@ let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
     )
 ;;
 
-let set_sector_history (state : Game.state) : unit =
+let set_sector_history (my_id : Game.Player.id)  (state : Game.state) : unit =
     let history = Dom_html.getElementById_exn "sector-history" in
     history##.innerHTML := Js.string "";
     let append_element idx sector =
@@ -72,7 +62,7 @@ let set_sector_history (state : Game.state) : unit =
         Dom.appendChild div s2;
         Dom.appendChild history div;
     in
-    let player = Game.current_player state in
+    let player = Game.get_player state my_id in
     List.iteri player.sector_history ~f:(fun idx coord ->
         let sector = GameUtil.hex_coord_to_sector_location coord in
         append_element idx sector
@@ -89,14 +79,6 @@ let set_event_list (state : Game.state) : unit =
         Dom.appendChild content p
     )
 ;;
-
-(*
-let apply_global (move : Game.Move.t) : unit =
-    (*Caml.print_endline "Applying global move...";*)
-    game := apply_move !game move;
-    (*Caml.print_endline Game.(show_state !game);*)
-;;
-*)
 
 let safe_sector_click apply_move =
     apply_move Game.Move.AcceptSafeSector
@@ -272,9 +254,6 @@ let do_decide_to_attack (info : Grid.context_info) (coord : HexCoord.t) apply_mo
     let x = gx +. pt.x -. (bounds##.right -. bounds##.left)*.0.5 in
     let y = gy +. pt.y -. (bounds##.bottom -. bounds##.top)*.0.5 |> Float.to_string in
     let x = if Float.(x < 0.) then "0" else Float.to_string x in
-    Caml.print_endline x;
-    Caml.print_endline y;
-    (*let x = Float.max x 0. |> Float.to_string in*)
     div##.style##.left := Js.string (x ^ "px");
     div##.style##.top := Js.string (y ^ "px");
 ;;
@@ -289,7 +268,7 @@ let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
     let win_string =
         match end_state.condition with 
         | AllHumansEscaped -> "Humans Win!"
-        | AllHumansKilled -> "hAliens Win!"
+        | AllHumansKilled -> "Aliens Win!"
         | AllHumansEscapedOrKilled -> "Mixed - Some humans escaped"
         | RoundLimit -> "Round Limit Reached"
     in
@@ -372,7 +351,7 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
     set_round_counter state;
     set_player_turn state my_id;
     set_event_list state;
-    set_sector_history state;
+    set_sector_history my_id state;
     set_buttons info state my_id apply_move;
     match state.Game.next with
     | Game.NextAction.CurrentPlayerPickMove moves -> 
@@ -400,6 +379,63 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
         clear_gui_handlers();
         clear_gui();
         draw_player !info state my_id;
+;;
+
+let timeout amt fn =
+    Dom_html.setTimeout fn amt |> ignore
+;;
+
+let toggle_noise_ping () =
+    let elems = Dom_html.document##getElementsByClassName Js.(string "noise-ping-circle") in
+    let get_item i = 
+        let opt = elems##item i in
+        opt
+        |> Js.Opt.to_option
+        |> function
+            | Some elem -> elem
+            | None -> failwith "Expected item at index"
+    in
+    for i=0 to elems##.length - 1 do
+        (get_item i)##.style##.animation := Js.string "none";
+    done;
+    (* Reset after timeout *)
+    timeout 0. (fun () ->
+        for i=0 to elems##.length - 1 do
+            let item = get_item i in
+            item##.style##.animation := Js.string "";
+            item##.style##.animationDuration := Js.string (Printf.sprintf "0.%ds" (i * 2));
+        done;
+    );
+;;
+
+let update_noise_ping (loc : Point.t) (size : float) : unit =
+    let elem = Dom_html.getElementById_exn "noise-ping-container" in
+    let px f =
+        f |> Float.round |> Int.of_float |> Int.to_string |> fun s -> s ^ "px" |> Js.string
+    in
+    let x = loc.x -. size*.0.5 in
+    let y = loc.y -. size*.0.5 in
+    elem##.style##.width := px size;
+    elem##.style##.height := px size;
+    elem##.style##.left := px x;
+    elem##.style##.top := px y;
+    (*toggle_noise_ping();*)
+    elem##.style##.display := Js.string "flex";
+    timeout 4000. (fun () ->
+        elem##.style##.display := Js.string "none";
+    );
+;;
+
+let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (_game : Game.state) events =
+    Printf.sprintf "Diff size %d" List.(length events) |> Caml.print_endline;
+    List.iter events ~f:(function
+        | Game.Event.Noise (_, coord) ->
+            Caml.print_endline "Noise!";
+            let loc = Layout.hex_to_pixel info.layout coord in
+            let size = info.hex_size *. 2. in
+            update_noise_ping loc size
+        | _ -> ()
+    )
 ;;
 
 let draw_map (game : Game.state) =
@@ -435,12 +471,18 @@ let setup_lobby_modal ?(on_click=fun()->())  host =
 let resize_callback (info : Grid.context_info ref) (game : Game.state ref) (my_id : Game.Player.id) apply_move =
     Dom_html.window##.onresize := Dom_html.handler (fun _ ->
         let map_canvas = Canvas.get_canvas map_canvas in
+        let annot_canvas = Canvas.get_canvas annot_canvas in
         let gui_canvas = Canvas.get_canvas gui_canvas in
-        reset_canvas_size gui_canvas;
         reset_canvas_size map_canvas;
-        Canvas.fix_canvas_dpi gui_canvas;
+        reset_canvas_size annot_canvas;
+        reset_canvas_size gui_canvas;
         Canvas.fix_canvas_dpi map_canvas;
+        Canvas.fix_canvas_dpi annot_canvas;
+        Canvas.fix_canvas_dpi gui_canvas;
 
+        info := Grid.calculate_info map_canvas Game.board_size_w Game.board_size_h;
+
+        draw_map !game;
         update_ui_for_state info apply_move my_id !game;
 
         Js._false
@@ -475,22 +517,20 @@ let setup_join_modal () =
                let first_draw = ref false in
 
                let callback = Js.wrap_callback (fun data ->
-                  (* Caml.print_endline "Got server reply";
-                   Caml.print_endline (Js._JSON##stringify data |> Js.to_string);*)
                    match Js.to_string data##._type with
                    | "game-update" -> 
                        disable_modal "lobby-modal";
                        let update = Multiplayer.parse_game_update data##.data in
+                       let event_diff = Game.event_diff ~old:!game ~new_:update in
                        game := update;
-                       Caml.print_endline "Game update";
-                       Game.show_state update |> Caml.print_endline;
                        let id : int = Js.Unsafe.(js_expr "player_id") in
                        if not !first_draw then (
                            first_draw := true;
                            resize_callback info game id apply_move;
                            draw_map !game;
                        );
-                       update_ui_for_state info apply_move id !game
+                       update_ui_for_state info apply_move id !game;
+                       update_event_diff !info id !game event_diff;
                    | _ -> ()
                ) in
 
@@ -541,14 +581,15 @@ let setup_host_modal () =
                    let apply_move move = 
                        Host.do_move (get_host()) move
                    in
-                   let update_ui state = 
+                   let update_ui event_diff state = 
                        Game.show_state state |> Caml.print_endline;
-                       update_ui_for_state info apply_move 0 state
+                       update_ui_for_state info apply_move 0 state;
+                       update_event_diff !info 0 (get_game()) event_diff;
                    in
                    host := Some (Host.create !player_list update_ui);
                    draw_map (get_game());
                    resize_callback info (get_host()).game 0 apply_move;
-                   Host.send_state_update (get_host());
+                   Host.send_state_update [] (get_host());
                    disable_modal "lobby-modal";
                );
                enable_modal "lobby-modal";
@@ -616,31 +657,11 @@ let attach () =
         initialize_modals();
 
         let map_canvas = get_canvas map_canvas in
+        let annot_canvas = get_canvas annot_canvas in
         let gui_canvas = get_canvas gui_canvas in
         Canvas.fix_canvas_dpi map_canvas;
         Canvas.fix_canvas_dpi gui_canvas;
-
-        (*
-        let info = ref (draw_map !game) in
-
-        (* Setup generic buttons *)
-        update_ui_for_state info !game (fun _ -> ());
-        *)
-
-        (*
-        let loop () =
-            (*Caml.print_endline "Making move...";*)
-            game := advance_game !game;
-            (*Caml.print_endline Game.(show_state !game);*)
-            update_ui_for_state info !game;
-        in
-
-        let btn = Dom_html.getElementById_exn "advance" in
-        btn##.onclick := Dom_html.handler (fun _ ->
-            loop();
-            Js._false
-        );
-        *)
+        Canvas.fix_canvas_dpi annot_canvas;
 
         Js._false
     );

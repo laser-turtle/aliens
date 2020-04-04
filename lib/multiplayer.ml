@@ -75,7 +75,7 @@ let send_to_server_join json : unit =
 module Host = struct
     type t = {
         game : Game.state ref;
-        update_ui : Game.state -> unit; 
+        update_ui : Game.Event.t list -> Game.state -> unit; 
     }
 
     let create_waiting_state (game : Game.state) =
@@ -86,16 +86,19 @@ module Host = struct
 
     let apply_move (state : t) (move : Game.Move.t) =
         match Game.apply !(state.game) move with
-        | Ok game -> state.game := game
-        | Error _ -> Caml.print_endline "GAME APPLY FAILURE"
+        | Ok update -> 
+                let diff = Game.event_diff ~new_:update ~old:!(state.game) in
+                state.game := update;
+                diff
+        | Error _ -> failwith "GAME APPLY FAILURE"
     ;;
 
-    let send_state_update (state : t) : unit =
+    let send_state_update (diff : Game.Event.t list) (state : t) : unit =
         let game = !(state.game) in
         let waiting_state = create_waiting_state game in
         if game.current_player = 0 then (
             (* This is us *)
-            state.update_ui game;
+            state.update_ui diff game;
             send_to_server_host (create_game_update waiting_state [0]);
         ) else (
             (* Not us, so render waiting state *)
@@ -103,18 +106,18 @@ module Host = struct
                 if p.id = game.current_player then None
                 else Some p.id
             ) in
-            state.update_ui waiting_state;
+            state.update_ui diff waiting_state;
             send_to_server_host (create_game_update waiting_state [0; game.current_player]);
             send_to_server_host (create_game_update game excluded);
         )
     ;;
 
     let do_move (state : t) (move : Game.Move.t) : unit =
-        apply_move state move;
-        send_state_update state;
+        let diff = apply_move state move in
+        send_state_update diff state;
     ;;
 
-    let create (players : string list) (update_ui : Game.state -> unit) = 
+    let create (players : string list) (update_ui : Game.Event.t list -> Game.state -> unit) = 
         let map = Game.generate_map() in
         {
             game = ref (Game.new_game players map);

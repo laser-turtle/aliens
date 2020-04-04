@@ -97,6 +97,15 @@ type state = {
 }
 [@@deriving show{with_path=false}, yojson]
 
+let event_diff ~(old : state) ~(new_ : state) =
+    let len_old = List.length old.events
+    and len_new = List.length new_.events in
+    if len_old < len_new then (
+        let amount = len_new - len_old in
+        List.take new_.events amount
+    ) else []
+;;
+
 let get_player (state : state) (pid : Player.id) =
     List.find_exn state.players ~f:(fun p ->
         p.id = pid

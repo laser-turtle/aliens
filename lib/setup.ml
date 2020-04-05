@@ -3,6 +3,29 @@ open! Js_of_ocaml
 open JsUtil
 open Ocaml_aliens_game
 
+module Annotations = struct
+    type annotation = {
+        pids : Game.Player.id list;
+    }
+
+    type t = {
+        mutable annots : annotation HexMap.t;
+    }
+
+    let add_player_to_coord (t : t) (_coord : HexCoord.t) (_pid : Game.Player.id) =
+        (*
+        match Map.find t.annots with 
+        | Some lst ->
+            let new_map = Map.set t.annots ~key:coord ~data:(id :: 
+                *)
+        t
+    ;;
+
+    let create () = {
+        annots = HexMap.empty;
+    }
+end
+
 let map_canvas = "map-canvas"
 let annot_canvas = "annot-canvas"
 let gui_canvas = "gui-canvas"
@@ -486,6 +509,26 @@ let resize_callback (info : Grid.context_info ref) (game : Game.state ref) (my_i
     );
 ;;
 
+let setup_annotations () =
+    let toggle = get_input "annotate-toggle" in
+    let label = get_elem_id "annotate-toggle-label" in
+    label##.onclick := Dom_html.handler (fun _ ->
+        let flipped = toggle##.checked |> Js.to_bool |> not |> Js.bool in
+        toggle##.checked := flipped;
+        Js._false
+    );
+    toggle##.onchange := Dom_html.handler (fun _ ->
+        if toggle##.checked |> Js.to_bool then (
+            (* enable annotation mode *)
+            ()
+        ) else (
+            (* disable annotation mode *)
+            ()
+        );
+        Js._false
+    );
+;;
+
 let setup_join_modal () =
     let join_btn = get_btn "join-modal-btn" in
     let name = get_input "join-modal-name" in
@@ -522,6 +565,7 @@ let setup_join_modal () =
                        game := update;
                        let id : int = Js.Unsafe.(js_expr "player_id") in
                        if not !first_draw then (
+                           setup_annotations();
                            first_draw := true;
                            resize_callback info game id apply_move;
                            draw_map !game;
@@ -574,6 +618,7 @@ let setup_host_modal () =
 
                disable_modal "host-modal";
                setup_lobby_modal true ~on_click:(fun () -> 
+                   setup_annotations();
                    (* Game has started *)
                    let apply_move move = 
                        Host.do_move (get_host()) move

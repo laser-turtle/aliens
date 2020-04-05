@@ -213,16 +213,24 @@ let setup_annotation_ui (info : Grid.context_info ref) (my_id : Game.Player.id) 
         let input = Dom_html.createInput ~_type:(Js.string "checkbox") ~name Dom_html.document in
         let label = Dom_html.createLabel Dom_html.document in
         let div = Dom_html.createDiv Dom_html.document in
+        let color_box = Dom_html.createDiv Dom_html.document in
         label##.htmlFor := name;
         label##.innerHTML := Js.string (p.name ^ " (" ^ pid_to_direction p.id ^ ")");
         input##.className := Js.string "annotate-player-toggle switch is-dark";
         label##.className := Js.string "annotate-player-label";
-        label##.style##.backgroundColor := Js.string (pid_to_color p.id);
-        label##.style##.borderRadius := Js.string "0.15rem";
+        color_box##.style##.width := Js.string "1rem";
+        color_box##.style##.height := Js.string "1rem";
+        color_box##.style##.display := Js.string "inline-block";
+        color_box##.style##.borderRadius := Js.string "0.2rem";
+        color_box##.style##.backgroundColor := Js.string (pid_to_color p.id);
+        color_box##.style##.position := Js.string "relative";
+        color_box##.style##.marginLeft := Js.string "0.25rem";
+        color_box##.style##.top := Js.string "0.15rem";
         div##.style##.display := Js.string "block";
 
         Dom.appendChild div input;
         Dom.appendChild div label;
+        Dom.appendChild div color_box;
 
         input, label, p.id, div
     ) in

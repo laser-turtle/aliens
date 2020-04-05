@@ -8,6 +8,10 @@ let annot_canvas = "annot-canvas"
 let gui_canvas = "gui-canvas"
 let canvas_parent = "canvas-container"
 
+let svg_noise_in_your_sector = "noise_in_your_sector.svg"
+let svg_noise_in_any_sector = "noise_any_sector.svg"
+let svg_silence_all_sectors = "silence_all_sectors.svg"
+
 let get_canvas = Canvas.get_canvas
 let reset_canvas_size = Canvas.reset_canvas_size canvas_parent 
 
@@ -18,8 +22,23 @@ let set_round_counter (game : Game.state) : unit =
 
 let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
     set_round_counter state;
-    let player_content = Dom_html.getElementById_exn "player-turns" in
-    let player_type = Dom_html.getElementById_exn "player-type" in
+    let player_content = get_elem_id "player-turns" in
+    let player_type = get_elem_id "player-type" in
+    let title = get_elem_id "player-turn-title" in
+    let title_name =
+        if my_id = state.current_player then (
+            "Your Turn"
+        ) else (
+            let name = Game.player_name state state.current_player in
+            if String.length name > 11 then (
+                Printf.sprintf "%s…'s Turn" String.(sub ~pos:0 ~len:8 name)
+            ) else (
+                Printf.sprintf "%s's Turn" name
+            )
+
+        )
+    in
+    title##.innerHTML := Js.string title_name;
     let player_string =
         match (Game.get_player state my_id).team with
         | Alien -> "Alien"
@@ -63,7 +82,7 @@ let set_sector_history (my_id : Game.Player.id)  (state : Game.state) : unit =
         Dom.appendChild history div;
     in
     let player = Game.get_player state my_id in
-    List.iteri player.sector_history ~f:(fun idx coord ->
+    List.iteri List.(rev player.sector_history) ~f:(fun idx coord ->
         let sector = GameUtil.hex_coord_to_sector_location coord in
         append_element idx sector
     )
@@ -78,18 +97,6 @@ let set_event_list (state : Game.state) : unit =
         p##.innerHTML := Js.(string event_str);
         Dom.appendChild content p
     )
-;;
-
-let safe_sector_click apply_move =
-    apply_move Game.Move.AcceptSafeSector
-;;
-
-let silence_sector_click apply_move =
-    apply_move Game.Move.AcceptSilenceInAllSectors
-;;
-
-let noise_your_sector_click apply_move =
-    apply_move Game.Move.AcceptNoiseInYourSector
 ;;
 
 let set_gui_handlers layout ~move_handler ~click_handler =
@@ -294,6 +301,23 @@ let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
     set_control_html killed Player.Killed;
 ;;
 
+let timeout amt fn =
+    Dom_html.setTimeout fn amt |> ignore
+;;
+
+let show_card data onclick =
+    let svg = get_object "card-svg-object" in
+    svg##.data := Js.string data;
+    let modal = get_elem_id "card-flip-modal" in
+    modal##.onclick := Dom_html.handler (fun _ ->
+        modal##.onclick := Dom_html.no_handler;
+        onclick();
+        disable_modal "card-flip-modal";
+        Js._false
+    );
+    enable_modal "card-flip-modal";
+;;
+
 let rec pick_move_click moves click layout x y =
     let coord = 
         Point.(make x y)
@@ -304,69 +328,72 @@ let rec pick_move_click moves click layout x y =
         click coord;
     )
 
-and set_buttons (info : Grid.context_info ref) (state : Game.state) (my_id : Game.Player.id) apply_move : unit =
-    (* TODO - might be easier to pull up the click handlers to here *)
-    let set_click = set_click apply_move in
-    let noise_your = get_btn "noise-in-your-sector-btn" in
-    let noise_any = get_btn "noise-in-any-sector-btn" in
-    let silence = get_btn "silence-in-all-sectors-btn" in
-    let safe = get_btn "safe-btn" in
-    let enable el = el##.disabled := Js._false in
-    let disable lst =
-        List.iter lst ~f:(fun element ->
-            element##.disabled := Js._true
+and pick_noise_sector (info : Grid.context_info ref) (my_id : Game.Player.id) (state : Game.state) apply_move =
+    let moves = Map.keys state.map.map |> HexMap.Set.of_list in
+    draw_moves !info.layout moves;
+    draw_player !info state my_id;
+    set_gui_handlers !info.layout
+        ~move_handler:(fun gui layout x y ->
+            pick_move_handler moves gui layout x y;
+            draw_player !info state my_id;
         )
-    in
-    disable [noise_your; noise_any; silence; safe];
-    let open Game in
-    match state.next with
-    | NextAction.ConfirmNoiseInYourSector -> 
-        enable noise_your;
-        set_click "noise-in-your-sector-btn" noise_your_sector_click;
-    | ConfirmSafeSector -> 
-        enable safe;
-        set_click "safe-btn" safe_sector_click;
-    | ConfirmSilenceInAllSectors -> 
-        enable silence;
-        set_click "silence-in-all-sectors-btn" silence_sector_click;
-    | PickNoiseInAnySector -> 
-        enable noise_any;
-        let moves = Map.keys state.map.map |> HexMap.Set.of_list in
-        draw_moves !info.layout moves;
-        draw_player !info state my_id;
-        set_gui_handlers !info.layout
-            ~move_handler:(fun gui layout x y ->
-                pick_move_handler moves gui layout x y;
-                draw_player !info state my_id;
-            )
-            ~click_handler:(pick_move_click moves (fun coord ->
-                clear_gui_handlers();
-                clear_gui();
-                draw_player !info state my_id;
-                apply_move Game.Move.(NoiseInAnySector coord);
-            ));
-    | _ -> ()
+        ~click_handler:(pick_move_click moves (fun coord ->
+            clear_gui_handlers();
+            clear_gui();
+            draw_player !info state my_id;
+            apply_move Game.Move.(NoiseInAnySector coord);
+        ))
 
 and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t -> unit) (my_id : Game.Player.id) (state : Game.state): unit =
+    (*Printf.sprintf "My ID %d" my_id |> Caml.print_endline;
+    Printf.sprintf "UPDATING UI STATE %s" (Game.show_state state) |> Caml.print_endline;
+    *)
     set_round_counter state;
     set_player_turn state my_id;
     set_event_list state;
     set_sector_history my_id state;
-    set_buttons info state my_id apply_move;
+    (*set_buttons info state my_id apply_move;*)
     match state.Game.next with
-    | Game.NextAction.CurrentPlayerPickMove moves -> 
+    | Game.NextAction.CurrentPlayerPickMove moves when state.current_player = my_id -> 
         set_gui_handlers !info.layout
             ~move_handler:(fun gui layout x y ->
                 pick_move_handler moves gui layout x y;
                 draw_player !info state my_id;
             )
             ~click_handler:(pick_move_click moves (fun coord -> 
+                clear_gui_handlers();
+                clear_gui();
                 let move = Game.Move.PlayerMove coord in
                 apply_move move;
             ));
         draw_moves !info.layout moves; 
         draw_player !info state my_id;
-    | PickNoiseInAnySector -> ()
+    | ConfirmSafeSector ->
+        clear_gui_handlers();
+        clear_gui();
+        (*timeout 1000. (fun () ->
+            apply_move Game.Move.AcceptSafeSector
+        )
+        *)
+        apply_move Game.Move.AcceptSafeSector
+    | ConfirmSilenceInAllSectors ->
+        clear_gui_handlers();
+        clear_gui();
+        show_card svg_silence_all_sectors (fun () ->
+            apply_move Game.Move.AcceptSilenceInAllSectors
+        );
+    | ConfirmNoiseInYourSector ->
+        clear_gui_handlers();
+        clear_gui();
+        show_card svg_noise_in_your_sector (fun () ->
+            apply_move Game.Move.AcceptNoiseInYourSector
+        );
+    | PickNoiseInAnySector ->
+        clear_gui_handlers();
+        clear_gui();
+        show_card svg_noise_in_any_sector (fun () ->
+            pick_noise_sector info my_id state apply_move
+        );
     | DecideToAttack coord -> 
         (* Remove pointer *)
         clear_gui_handlers();
@@ -381,33 +408,6 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
         draw_player !info state my_id;
 ;;
 
-let timeout amt fn =
-    Dom_html.setTimeout fn amt |> ignore
-;;
-
-let toggle_noise_ping () =
-    let elems = Dom_html.document##getElementsByClassName Js.(string "noise-ping-circle") in
-    let get_item i = 
-        let opt = elems##item i in
-        opt
-        |> Js.Opt.to_option
-        |> function
-            | Some elem -> elem
-            | None -> failwith "Expected item at index"
-    in
-    for i=0 to elems##.length - 1 do
-        (get_item i)##.style##.animation := Js.string "none";
-    done;
-    (* Reset after timeout *)
-    timeout 0. (fun () ->
-        for i=0 to elems##.length - 1 do
-            let item = get_item i in
-            item##.style##.animation := Js.string "";
-            item##.style##.animationDuration := Js.string (Printf.sprintf "0.%ds" (i * 2));
-        done;
-    );
-;;
-
 let update_noise_ping (loc : Point.t) (size : float) : unit =
     let elem = Dom_html.getElementById_exn "noise-ping-container" in
     let px f =
@@ -419,18 +419,15 @@ let update_noise_ping (loc : Point.t) (size : float) : unit =
     elem##.style##.height := px size;
     elem##.style##.left := px x;
     elem##.style##.top := px y;
-    (*toggle_noise_ping();*)
     elem##.style##.display := Js.string "flex";
-    timeout 4000. (fun () ->
+    timeout 2000. (fun () ->
         elem##.style##.display := Js.string "none";
     );
 ;;
 
 let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (_game : Game.state) events =
-    Printf.sprintf "Diff size %d" List.(length events) |> Caml.print_endline;
     List.iter events ~f:(function
         | Game.Event.Noise (_, coord) ->
-            Caml.print_endline "Noise!";
             let loc = Layout.hex_to_pixel info.layout coord in
             let size = info.hex_size *. 2. in
             update_noise_ping loc size
@@ -571,9 +568,9 @@ let setup_host_modal () =
                let map_canvas = Canvas.get_canvas map_canvas in
                let info = ref (Grid.calculate_info map_canvas Game.board_size_w Game.board_size_h) in
                let host = ref None in
+               let game = ref Game.empty_game in
 
                let get_host() = Option.value_exn !host in
-               let get_game() = !((get_host()).Host.game) in
 
                disable_modal "host-modal";
                setup_lobby_modal true ~on_click:(fun () -> 
@@ -582,21 +579,25 @@ let setup_host_modal () =
                        Host.do_move (get_host()) move
                    in
                    let update_ui event_diff state = 
-                       Game.show_state state |> Caml.print_endline;
+                       (*Caml.print_endline "GUI UPDATE";
+                       Game.show_state state |> Caml.print_endline;*)
                        update_ui_for_state info apply_move 0 state;
-                       update_event_diff !info 0 (get_game()) event_diff;
+                       update_event_diff !info 0 !game event_diff;
                    in
-                   host := Some (Host.create !player_list update_ui);
-                   draw_map (get_game());
-                   resize_callback info (get_host()).game 0 apply_move;
+                   let _ =
+                        let map = Game.generate_map() in
+                        game := Game.new_game !player_list map
+                   in
+                   host := Some (Host.create game update_ui);
+                   draw_map !game;
+                   resize_callback info game 0 apply_move;
                    Host.send_state_update [] (get_host());
                    disable_modal "lobby-modal";
                );
                enable_modal "lobby-modal";
 
-
                let callback = Js.wrap_callback (fun data ->
-                   Caml.print_endline (Js._JSON##stringify data |> Js.to_string);
+                   (*Caml.print_endline (Js._JSON##stringify data |> Js.to_string);*)
                    match Js.to_string data##._type with
                    | "player-list-update" -> 
                         player_list := str_array_to_str_list data##.players;
@@ -613,7 +614,7 @@ let setup_host_modal () =
                                 | Ok move -> move
                                 | Error err -> failwith err
                         in
-                        Caml.print_endline "Got player move";
+                        (*Caml.print_endline "Got player move";*)
                         Host.do_move (get_host()) move
                    | _ -> ()
                ) in

@@ -78,9 +78,8 @@ end
 module Event = struct
     type t = Noise of Player.id * HexCoord.t
            | Silence of Player.id
-           | Attack of Player.id * HexCoord.t
+           | Attack of Player.id * HexCoord.t * Player.id list
            | Escape of Player.id * HexCoord.t * int (* pod *)
-           | PlayerKilled of Player.id * HexCoord.t * Player.id (* who * where * by *)
            (* Win conditions ? *)
            [@@deriving show{with_path=false}, yojson]
 end
@@ -94,6 +93,7 @@ type state = {
     map : SectorMap.t;
     next : NextAction.t;
     events : Event.t list;
+    seq_id : int;
 }
 [@@deriving show{with_path=false}, yojson]
 
@@ -128,18 +128,22 @@ let event_to_string (state : state) (event : Event.t) : string =
             (player_name state id)
             (sector_loc coord)
     | Silence id -> Printf.sprintf "%s: Silence in all sectors" (player_name state id)
-    | Attack (id, coord) -> 
-        Printf.sprintf "%s: Attacks sector %s" 
+    | Attack (id, coord, []) -> 
+        Printf.sprintf "%s: Attacks sector %s, no one is there" 
             (player_name state id)
             (sector_loc coord)
+    | Attack (id, coord, lst) -> 
+        Printf.sprintf "%s: Attacks sector %s, kills %s" 
+            (player_name state id)
+            (sector_loc coord)
+            (lst
+             |> List.map ~f:(fun id -> 
+                     let name = player_name state id in
+                     let team = Player.show_team (player_team state id) in
+                     Printf.sprintf "%s (%s)" name team
+             )
+             |> String.concat ~sep:", ")
     | Escape (id, _, n) -> Printf.sprintf "%s: ESCAPED IN POD %d!" (player_name state id) n
-    | PlayerKilled (who, where, by) ->
-            Printf.sprintf "%s %s killed by %s %s in %s"
-                (Player.show_team (player_team state who))
-                (player_name state who)
-                (sector_loc where)
-                (Player.show_team (player_team state by))
-                (player_name state by)
 ;;
 
 let random_state = Base.Random.State.make_self_init()
@@ -250,6 +254,7 @@ let empty_game = {
     map = SectorMap.empty;
     next_players = [];
     next = NextAction.CurrentPlayerPickMove HexMap.Set.empty;
+    seq_id = 0;
 }
 
 let new_game (players : string list) (map : SectorMap.t) = 
@@ -264,6 +269,7 @@ let new_game (players : string list) (map : SectorMap.t) =
     next_players = generate_next_players first_player.id players;
     next = next_player_action map first_player;
     events = [];
+    seq_id = 0;
 }
 
 let generate_map () =
@@ -455,11 +461,9 @@ let do_alien_attack (state : state) : apply_result =
             )
         )
     in
-    let killed = List.map players_in_sector ~f:(fun p ->
-        Event.PlayerKilled (p.id, p.current_pos, attacker.id)
-    ) in
-    let event = Event.Attack (attacker.id, attacker.current_pos) in
-    Ok (state |> add_events (killed @ [event]) |> change_player)
+    let ids = List.map ~f:(fun p -> p.id) players_in_sector in
+    let event = Event.Attack (attacker.id, attacker.current_pos, ids) in
+    Ok (state |> add_event event |> change_player)
 ;;
 
 let do_safe_sector (state : state) : apply_result =
@@ -496,13 +500,18 @@ let verify_transition (_state : state) (_move : Move.t) : bool =
 
 let apply (state : state) (move : Move.t) : apply_result =
     assert (verify_transition state move);
-    match move with
-    | ChangeName (pid, name) -> Ok (change_name state pid name)
-    | PlayerMove coord -> check_player_move state coord
-    | AcceptAttack -> do_alien_attack state
-    | DeclineAttack -> Ok (pick_danger_action state)
-    | NoiseInAnySector coord -> do_noise_in_any_sector state coord
-    | AcceptNoiseInYourSector -> do_noise_in_your_sector state
-    | AcceptSilenceInAllSectors -> do_silence_in_all_sectors state
-    | AcceptSafeSector -> do_safe_sector state
+    let next_state =
+        match move with
+        | ChangeName (pid, name) -> Ok (change_name state pid name)
+        | PlayerMove coord -> check_player_move state coord
+        | AcceptAttack -> do_alien_attack state
+        | DeclineAttack -> Ok (pick_danger_action state)
+        | NoiseInAnySector coord -> do_noise_in_any_sector state coord
+        | AcceptNoiseInYourSector -> do_noise_in_your_sector state
+        | AcceptSilenceInAllSectors -> do_silence_in_all_sectors state
+        | AcceptSafeSector -> do_safe_sector state
+    in
+    match next_state with
+    | Ok state -> Ok { state with seq_id = state.seq_id + 1 }
+    | Error _ as e -> e
 ;;

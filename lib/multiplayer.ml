@@ -74,7 +74,8 @@ let send_to_server_join json : unit =
 
 module Host = struct
     type t = {
-        game : Game.state ref;
+        mutable master_game : Game.state;
+        host_game : Game.state ref;
         update_ui : Game.Event.t list -> Game.state -> unit; 
     }
 
@@ -85,20 +86,21 @@ module Host = struct
     ;;
 
     let apply_move (state : t) (move : Game.Move.t) =
-        match Game.apply !(state.game) move with
+        match Game.apply state.master_game move with
         | Ok update -> 
-                let diff = Game.event_diff ~new_:update ~old:!(state.game) in
-                state.game := update;
+                let diff = Game.event_diff ~new_:update ~old:state.master_game in
+                state.master_game <- update;
                 diff
         | Error _ -> failwith "GAME APPLY FAILURE"
     ;;
 
     let send_state_update (diff : Game.Event.t list) (state : t) : unit =
-        let game = !(state.game) in
+        let game = state.master_game in
         let waiting_state = create_waiting_state game in
         if game.current_player = 0 then (
             (* This is us *)
             state.update_ui diff game;
+            state.host_game := game;
             send_to_server_host (create_game_update waiting_state [0]);
         ) else (
             (* Not us, so render waiting state *)
@@ -106,6 +108,8 @@ module Host = struct
                 if p.id = game.current_player then None
                 else Some p.id
             ) in
+            assert Poly.(game.next <> Game.NextAction.WaitingForPlayer);
+            state.host_game := waiting_state;
             state.update_ui diff waiting_state;
             send_to_server_host (create_game_update waiting_state [0; game.current_player]);
             send_to_server_host (create_game_update game excluded);
@@ -117,10 +121,10 @@ module Host = struct
         send_state_update diff state;
     ;;
 
-    let create (players : string list) (update_ui : Game.Event.t list -> Game.state -> unit) = 
-        let map = Game.generate_map() in
+    let create (game : Game.state ref) (update_ui : Game.Event.t list -> Game.state -> unit) = 
         {
-            game = ref (Game.new_game players map);
+            master_game = !game;
+            host_game = game;
             update_ui;
         }
     ;;

@@ -32,6 +32,13 @@ let get_select id =
     )
 ;;
 
+let get_object id =
+    get_elem_type id (function
+        | Object o -> o
+        | _ -> failwith "expected object"
+    )
+;;
+
 let select_value (select : Dom_html.selectElement Js.t) : string =
     let item = select##.options##item select##.selectedIndex in
     item

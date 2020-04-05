@@ -40,6 +40,11 @@ let context (canvas : canvas) : context_2d =
     canvas##getContext Dom_html._2d_
 ;;
 
+let clear (canvas : canvas) : unit =
+    let context = context canvas in
+    context##clearRect 0. 0. (Caml.float canvas##.width) (Caml.float canvas##.height);
+;;
+
 let get_dpi () =
     Dom_html.window##.devicePixelRatio
 

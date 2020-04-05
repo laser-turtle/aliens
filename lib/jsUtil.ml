@@ -18,6 +18,15 @@ let get_btn id =
     )
 ;;
 
+let cast_input elem =
+    elem
+    |> Dom_html.tagged
+    |> (function
+        | Input i -> i
+        | _ -> failwith "expected input"
+    )
+;;
+
 let get_input id =
     get_elem_type id (function
         | Input i -> i
@@ -59,11 +68,26 @@ let str_array_to_str_list (str_array : Js.string_array Js.t) : string list =
 let input_value input =
     Js.to_string input##.value 
 
+let toggle_input toggle =
+    let flipped = toggle##.checked |> Js.to_bool |> not |> Js.bool in
+    toggle##.checked := flipped
+;;
+
 let enable_modal id =
     (get_elem_id id)##.className := Js.string "modal is-active"
 ;;
 
 let disable_modal id =
     (get_elem_id id)##.className := Js.string "modal"
+;;
+
+let get_elems_by_class class_ =
+    let elems = Dom_html.document##getElementsByClassName Js.(string class_) in
+    List.init elems##.length ~f:(fun i ->
+        let e = elems##item i in
+        e |> Js.Opt.to_option |> function
+            | Some e -> e
+            | None -> failwith "impossible get_elems_by_class"
+    )
 ;;
 

@@ -3,33 +3,296 @@ open! Js_of_ocaml
 open JsUtil
 open Ocaml_aliens_game
 
-module Annotations = struct
-    type annotation = {
-        pids : Game.Player.id list;
-    }
-
-    type t = {
-        mutable annots : annotation HexMap.t;
-    }
-
-    let add_player_to_coord (t : t) (_coord : HexCoord.t) (_pid : Game.Player.id) =
-        (*
-        match Map.find t.annots with 
-        | Some lst ->
-            let new_map = Map.set t.annots ~key:coord ~data:(id :: 
-                *)
-        t
-    ;;
-
-    let create () = {
-        annots = HexMap.empty;
-    }
-end
-
 let map_canvas = "map-canvas"
 let annot_canvas = "annot-canvas"
 let gui_canvas = "gui-canvas"
 let canvas_parent = "canvas-container"
+
+module Annotations = struct
+
+    type annotation = (Game.Player.id, Int.comparator_witness) Set.t
+
+    type t = {
+        mutable annots : annotation HexMap.t;
+        mutable current_player : Game.Player.id option;
+        mutable enabled : bool;
+    }
+
+    let add_player_to_coord (t : t) (coord : HexCoord.t) (pid : Game.Player.id) : unit =
+        match Map.find t.annots coord with 
+        | Some set ->
+            let data = Set.add set pid in
+            let map = Map.set t.annots ~key:coord ~data in
+            t.annots <- map
+        | None -> 
+            t.annots <- Map.set t.annots ~key:coord ~data:Set.(singleton (module Int) pid)
+    ;;
+
+    let remove_player_from_coord (t : t) (coord : HexCoord.t) (pid : Game.Player.id) : unit =
+        match Map.find t.annots coord with 
+        | Some set ->
+            let data = Set.remove set pid in
+            let map = Map.set t.annots ~key:coord ~data in
+            t.annots <- map
+        | None -> ()
+    ;;
+
+    let toggle_player_at_coord (t : t) (coord : HexCoord.t) (pid : Game.Player.id) : unit =
+        match Map.find t.annots coord with
+        | Some set -> 
+            if Set.mem set pid then (
+                remove_player_from_coord t coord pid
+            ) else (
+                add_player_to_coord t coord pid
+            )
+        | None -> add_player_to_coord t coord pid
+    ;;
+
+    let toggle_player (t : t) (coord : HexCoord.t) : unit =
+        match t.current_player with
+        | Some pid -> toggle_player_at_coord t coord pid
+        | None -> ()
+    ;;
+
+    let iter (t : t) ~f =
+        Map.iteri t.annots ~f
+    ;;
+
+    let set_player (t : t) (pid : Game.Player.id) : unit =
+        t.current_player <- Some pid
+    ;;
+
+    let unset_player (t : t) : unit =
+        t.current_player <- None;
+    ;;
+
+    let enable (t : t) : unit =
+        t.enabled <- true
+    ;;
+
+    let disable (t : t) : unit =
+        t.enabled <- false;
+        t.current_player <- None
+    ;;
+
+    let create () = {
+        annots = HexMap.empty;
+        current_player = None;
+        enabled = false;
+    }
+end
+
+let annot_state = Annotations.create()
+
+let pid_to_color = function
+    | 0 -> "#ff3860"
+    | 1 -> "#ffdd57"
+    | 2 -> "#48c774"
+    | 3 -> "#209cee"
+    | 4 -> "#3273dc"
+    | 5 -> "#00d1b2"
+    | 6 -> "#363636"
+    | 7 -> "#ff9f38"
+    | _ -> failwith "No color for player 8+"
+;;
+
+let draw_annotations (info : Grid.context_info) (annotations : Annotations.t) =
+    let annot = Canvas.get_canvas annot_canvas in
+    Canvas.clear annot;
+    if annotations.enabled then (
+        let context = Canvas.context annot in
+        context##save;
+        Annotations.iter annotations ~f:(fun ~key ~data ->
+            let center = Layout.hex_to_pixel info.layout key in
+            Set.iter data ~f:(fun pid ->
+                let pt =
+                    match pid with
+                    | 7 -> Point.(center - Point.make 0. (info.hex_size *. 0.6));
+                    | 6 -> Point.(center + Point.make 0. (info.hex_size *. 0.6));
+                    | 5 | 4 | 3 | 2 | 1 | 0 ->
+                        let corner = Layout.hex_corner_offset info.layout pid in
+                        Point.(center + (corner * 0.6))
+                    | _ -> failwith "Unhandled coordinate"
+                in
+                context##beginPath;
+                context##.fillStyle := Js.string (pid_to_color pid);
+                context##arc pt.x pt.y (info.hex_size *. 0.2) 0. (2. *. Float.pi) Js._false;
+                context##closePath;
+                context##fill;
+            )
+        );
+        context##restore;
+    )
+;;
+
+let disable_all_annotate_player_toggles () =
+    "annotate-player-toggle"
+    |> get_elems_by_class 
+    |> List.map ~f:cast_input
+    |> List.iter ~f:(fun input ->
+        input##.checked := Js._false
+    )
+;;
+
+let enable_annotations_ui_selection (info : Grid.context_info ref) (is_valid_coord : HexCoord.t -> bool) =
+    (* Make sure the show annotations toggle is enabled *)
+    let toggle = get_input "annotate-toggle" in
+    toggle##.checked := Js._true;
+    Annotations.enable annot_state;
+    draw_annotations !info annot_state;
+    let canvas = Canvas.get_canvas annot_canvas in
+    let context = Canvas.context canvas in
+    canvas##.style##.zIndex := Js.string "999";
+
+    (* Click handlers *)
+    canvas##.onmousemove := Dom_html.handler (fun evt -> 
+        (* Draw highlight *)
+        draw_annotations !info annot_state;
+
+        begin match annot_state.current_player with
+        | None -> ()
+        | Some pid ->
+            let clientRect = canvas##getBoundingClientRect in
+            let x = Caml.float evt##.clientX -. clientRect##.left in
+            let y = Caml.float evt##.clientY -. clientRect##.top in
+            let coord = Layout.pixel_to_hex !info.layout Point.(make x y) |> FractHex.round in
+            if is_valid_coord coord then (
+                context##save;
+                context##.fillStyle := Js.string (pid_to_color pid);
+                context##.globalAlpha := 0.2;
+                Grid.polygon_path context Layout.(polygon_corners !info.layout coord);
+                context##fill;
+                context##restore;
+            )
+        end;
+
+        Js._false;
+    );
+
+    canvas##.onclick := Dom_html.handler (fun evt ->
+        let clientRect = canvas##getBoundingClientRect in
+        let x = Caml.float evt##.clientX -. clientRect##.left in
+        let y = Caml.float evt##.clientY -. clientRect##.top in
+
+        let coord = Layout.pixel_to_hex !info.layout Point.(make x y) |> FractHex.round in
+        if is_valid_coord coord then (
+            Annotations.toggle_player annot_state coord;
+            draw_annotations !info annot_state;
+        );
+
+        Js._false;
+    );
+;;
+
+let disable_annotations_ui_selection info =
+    let canvas = Canvas.get_canvas annot_canvas in
+    canvas##.style##.zIndex := Js.string "1";
+    canvas##.onmousemove := Dom_html.no_handler;
+    canvas##.onclick := Dom_html.no_handler;
+    draw_annotations info annot_state
+;;
+
+let pid_to_direction = function
+    | 0 -> "MR"
+    | 1 -> "BR"
+    | 2 -> "BL"
+    | 3 -> "ML"
+    | 4 -> "TL"
+    | 5 -> "TR"
+    | 6 -> "CT"
+    | 7 -> "CB"
+    | _ -> failwith "Unexpected player id"
+;;
+
+let setup_annotation_ui (info : Grid.context_info ref) (my_id : Game.Player.id) (state : Game.state ref) =
+    let players = List.filter !state.players ~f:(fun p -> p.id <> my_id) in
+    let container = get_elem_id "annotate-player-container" in
+    container##.innerHTML := Js.string "";
+    let controls = List.map players ~f:(fun p ->
+        let name = Printf.sprintf "player-annotate-input-%d" p.id |> Js.string in
+        let input = Dom_html.createInput ~_type:(Js.string "checkbox") ~name Dom_html.document in
+        let label = Dom_html.createLabel Dom_html.document in
+        let div = Dom_html.createDiv Dom_html.document in
+        label##.htmlFor := name;
+        label##.innerHTML := Js.string (p.name ^ " (" ^ pid_to_direction p.id ^ ")");
+        input##.className := Js.string "annotate-player-toggle switch is-dark";
+        label##.className := Js.string "annotate-player-label";
+        div##.style##.display := Js.string "block";
+
+        Dom.appendChild div input;
+        Dom.appendChild div label;
+
+        input, label, p.id, div
+    ) in
+    let disable_other_controls me = 
+        let my_name = me##.name |> Js.to_string in
+        List.iter controls ~f:(fun (input, _, _, _) ->
+            let iname = input##.name |> Js.to_string in
+            if String.(my_name <> iname) then (
+                input##.checked := Js._false;
+            )
+        )
+    in
+    let is_valid_coord coord =
+        not (SectorMap.is_sector_empty !state.map coord)
+    in
+    List.iter controls ~f:(fun (input, label, pid, div) ->
+        label##.onclick := Dom_html.handler (fun _ ->
+            toggle_input input;
+            if input##.checked |> Js.to_bool then (
+                disable_other_controls input;
+                (* Enable annotations and set our ID *)
+                Annotations.set_player annot_state pid;
+                enable_annotations_ui_selection info is_valid_coord;
+            ) else (
+                Annotations.unset_player annot_state;
+                disable_annotations_ui_selection !info;
+            );
+            Js._false
+        );
+
+        Dom.appendChild container div;
+    );
+;;
+
+type noise_stats = {
+    mutable noise_in_your : int;
+    mutable noise_in_any : int;
+    mutable silence : int;
+}
+
+let noise_stats = {
+    noise_in_your = 0;
+    noise_in_any = 0;
+    silence = 0;
+}
+
+let print_noise_stats () =
+    let your = noise_stats.noise_in_your
+    and any = noise_stats.noise_in_any
+    and silence = noise_stats.silence in
+    let total = your + any + silence in
+    let f = Caml.float in
+    let your_prob = (f your /. f total) *. 100. in
+    let any_prob = (f any /. f total) *. 100. in
+    let silence_prob = (f silence /. f total) *. 100. in
+    let s1 = Printf.sprintf "Noise in your sector %d/%d %.2f" your total your_prob in
+    let s2 = Printf.sprintf "Noise in any sector %d/%d %.2f" any total any_prob in
+    let s3 = Printf.sprintf "Silence in all sectors %d/%d %.2f" silence total silence_prob in
+    Caml.print_endline s1;
+    Caml.print_endline s2;
+    Caml.print_endline s3;
+;;
+
+let update_noise_stats = function
+    | Game.NextAction.ConfirmNoiseInYourSector -> 
+            noise_stats.noise_in_your <- noise_stats.noise_in_your + 1
+    | PickNoiseInAnySector ->
+            noise_stats.noise_in_any <- noise_stats.noise_in_any + 1
+    | ConfirmSilenceInAllSectors ->
+            noise_stats.silence <- noise_stats.silence + 1
+    | _ -> ()
+;;
 
 let svg_noise_in_your_sector = "noise_in_your_sector.svg"
 let svg_noise_in_any_sector = "noise_any_sector.svg"
@@ -148,8 +411,7 @@ let clear_gui_handlers () =
 
 let clear_gui () =
     let gui = get_canvas gui_canvas in
-    let context = Canvas.context gui in
-    context##clearRect 0. 0. (Caml.float gui##.width) (Caml.float gui##.height);
+    Canvas.clear gui;
 ;;
 
 let add_gui_pointer gui =
@@ -274,15 +536,12 @@ let do_decide_to_attack (info : Grid.context_info) (coord : HexCoord.t) apply_mo
     let layout = info.layout in
     let pt = Layout.hex_to_pixel layout coord in
     let gui = Canvas.get_canvas gui_canvas in
-    let gui_loc = gui##getBoundingClientRect in
-    let gx = gui_loc##.left in
-    let gy = gui_loc##.top in
     let div = Dom_html.getElementById_exn "attack-choices" in
     remove_gui_pointer gui;
     div##.style##.display := Js.string "block";
     let bounds = div##getBoundingClientRect in
-    let x = gx +. pt.x -. (bounds##.right -. bounds##.left)*.0.5 in
-    let y = gy +. pt.y -. (bounds##.bottom -. bounds##.top)*.0.5 |> Float.to_string in
+    let x = pt.x -. (bounds##.right -. bounds##.left)*.0.5 in
+    let y = pt.y -. (bounds##.bottom -. bounds##.top)*.0.5 |> Float.to_string in
     let x = if Float.(x < 0.) then "0" else Float.to_string x in
     div##.style##.left := Js.string (x ^ "px");
     div##.style##.top := Js.string (y ^ "px");
@@ -371,6 +630,7 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
     (*Printf.sprintf "My ID %d" my_id |> Caml.print_endline;
     Printf.sprintf "UPDATING UI STATE %s" (Game.show_state state) |> Caml.print_endline;
     *)
+    draw_annotations !info annot_state;
     set_round_counter state;
     set_player_turn state my_id;
     set_event_list state;
@@ -420,6 +680,7 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
     | DecideToAttack coord -> 
         (* Remove pointer *)
         clear_gui_handlers();
+        draw_player !info state my_id;
         do_decide_to_attack !info coord apply_move
     | GameOver end_state ->
         clear_gui_handlers();
@@ -509,24 +770,28 @@ let resize_callback (info : Grid.context_info ref) (game : Game.state ref) (my_i
     );
 ;;
 
-let setup_annotations () =
+let setup_annotations (info : Grid.context_info ref) =
     let toggle = get_input "annotate-toggle" in
+    toggle##.checked := Js._false;
     let label = get_elem_id "annotate-toggle-label" in
     label##.onclick := Dom_html.handler (fun _ ->
-        let flipped = toggle##.checked |> Js.to_bool |> not |> Js.bool in
-        toggle##.checked := flipped;
-        Js._false
-    );
-    toggle##.onchange := Dom_html.handler (fun _ ->
+        toggle_input toggle;
         if toggle##.checked |> Js.to_bool then (
             (* enable annotation mode *)
-            ()
+            Annotations.enable annot_state;
+            draw_annotations !info annot_state;
         ) else (
             (* disable annotation mode *)
-            ()
+            disable_all_annotate_player_toggles();
+            Annotations.disable annot_state;
+            disable_annotations_ui_selection !info;
         );
         Js._false
     );
+    (*toggle##.onchange := Dom_html.handler (fun _ ->
+        Caml.print_endline "CHANGE";
+        Js._false
+    );*)
 ;;
 
 let setup_join_modal () =
@@ -551,7 +816,7 @@ let setup_join_modal () =
                let info = ref (Grid.calculate_info map_canvas Game.board_size_w Game.board_size_h) in
 
                let apply_move move =
-                   Multiplayer.(send_to_server_join (create_player_update move))
+                   Multiplayer.(send_to_server_join (create_player_update move));
                in
 
                let first_draw = ref false in
@@ -565,13 +830,16 @@ let setup_join_modal () =
                        game := update;
                        let id : int = Js.Unsafe.(js_expr "player_id") in
                        if not !first_draw then (
-                           setup_annotations();
+                           setup_annotations info;
                            first_draw := true;
                            resize_callback info game id apply_move;
+                           setup_annotation_ui info id game;
                            draw_map !game;
                        );
                        update_ui_for_state info apply_move id !game;
                        update_event_diff !info id !game event_diff;
+                       update_noise_stats !game.next;
+                       print_noise_stats();
                    | _ -> ()
                ) in
 
@@ -618,10 +886,12 @@ let setup_host_modal () =
 
                disable_modal "host-modal";
                setup_lobby_modal true ~on_click:(fun () -> 
-                   setup_annotations();
+                   setup_annotations info;
                    (* Game has started *)
                    let apply_move move = 
-                       Host.do_move (get_host()) move
+                       Host.do_move (get_host()) move;
+                       update_noise_stats !game.next;
+                       print_noise_stats();
                    in
                    let update_ui event_diff state = 
                        (*Caml.print_endline "GUI UPDATE";
@@ -634,6 +904,7 @@ let setup_host_modal () =
                         game := Game.new_game !player_list map
                    in
                    host := Some (Host.create game update_ui);
+                   setup_annotation_ui info 0 game;
                    draw_map !game;
                    resize_callback info game 0 apply_move;
                    Host.send_state_update [] (get_host());

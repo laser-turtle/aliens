@@ -100,6 +100,12 @@ let mem (t : t) = Map.mem t.map
 let get_neighbors (t : t) c = 
     HexMap.get_neighbors t.map c
 
+let is_sector_empty (t : t) c =
+    match Map.find t.map c with
+    | None -> true
+    | Some _ -> false
+;;
+
 let random_map w h : t =
     let map =
         HexMap.create_grid w h ~f:(fun _ ->

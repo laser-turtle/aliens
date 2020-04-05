@@ -4,6 +4,8 @@ let board_size_w = 23
 let board_size_h = 14
 let max_rounds = 39
 
+let random_state = Base.Random.State.make_self_init()
+
 module Player = struct
     type team = Alien
               | Human
@@ -84,12 +86,55 @@ module Event = struct
            [@@deriving show{with_path=false}, yojson]
 end
 
+module DangerousAction = struct
+    type t = NoiseInYourSector (* 10/25 *)
+           | NoiseInAnySector (* 10/25 *)
+           | Silence (* 5/25 *)
+           [@@deriving show{with_path=false}, yojson]
+
+    module Deck = struct
+        type deck = {
+            discard : t list;
+            pile : t list;
+        }[@@deriving show{with_path=false}, yojson]
+
+        let reshuffle (t : deck) = 
+            let lst = List.append t.pile t.discard in
+            {
+                discard = [];
+                pile = List.permute ~random_state lst
+            }
+
+        let create ~(num_your : int) ~(num_any : int) ~(num_silence : int) =
+            let your = List.init num_your ~f:(fun _ -> NoiseInYourSector) in
+            let any = List.init num_any ~f:(fun _ -> NoiseInAnySector) in
+            let silence = List.init num_silence ~f:(fun _ -> Silence) in
+            let pile = List.concat [your; any; silence] in
+            reshuffle { pile; discard = [] }
+        ;;
+
+        let pick (t : deck) =
+            let top = List.hd_exn t.pile in
+            top, { pile = List.tl_exn t.pile; discard = top :: t.discard }
+
+        let pick_and_shuffle (t : deck) =
+            match t.pile with
+            | [] ->
+                let t = reshuffle t in
+                pick t
+            | hd :: tl ->
+                hd, { pile = tl; discard = hd :: t.discard }
+        ;;
+    end
+end
+
 type state = {
     players : Player.t list;
     round : int;
     max_rounds : int;
     current_player : int;
     next_players : Player.id list;
+    danger_cards : DangerousAction.Deck.deck;
     map : SectorMap.t;
     next : NextAction.t;
     events : Event.t list;
@@ -145,8 +190,6 @@ let event_to_string (state : state) (event : Event.t) : string =
              |> String.concat ~sep:", ")
     | Escape (id, _, n) -> Printf.sprintf "%s: ESCAPED IN POD %d!" (player_name state id) n
 ;;
-
-let random_state = Base.Random.State.make_self_init()
 
 let gen_players names alien_spawn human_spawn : Player.t list =
     let num_players = List.length names in
@@ -251,6 +294,7 @@ let empty_game = {
     max_rounds = 39;
     current_player = 0;
     events = [];
+    danger_cards = { pile=[]; discard=[] };
     map = SectorMap.empty;
     next_players = [];
     next = NextAction.CurrentPlayerPickMove HexMap.Set.empty;
@@ -265,6 +309,7 @@ let new_game (players : string list) (map : SectorMap.t) =
     round = 0;
     max_rounds;
     map;
+    danger_cards = DangerousAction.Deck.create ~num_your:10 ~num_any:10 ~num_silence:5;
     current_player = first_player.id;
     next_players = generate_next_players first_player.id players;
     next = next_player_action map first_player;
@@ -274,19 +319,6 @@ let new_game (players : string list) (map : SectorMap.t) =
 
 let generate_map () =
     SectorMap.random_map board_size_w board_size_h
-
-module DangerousAction = struct
-    type t = NoiseInYourSector (* 10/25 *)
-           | NoiseInAnySector (* 10/25 *)
-           | Silence (* 5/25 *)
-
-    let pick () =
-        let r = Random.State.int random_state 25 in
-        if r < 10 then NoiseInYourSector
-        else if r < 20 then NoiseInAnySector
-        else Silence
-    ;;
-end
 
 let update_player_list (players : Player.t list) (pid : Player.id) ~f =
     List.map players ~f:(fun p -> 
@@ -315,7 +347,9 @@ let update_next (state : state) (next : NextAction.t) : state = {
 type apply_result = (state, Move.invalid) Result.t
 
 let pick_danger_action (state : state) : state =
-    match DangerousAction.pick() with
+    let action, danger_cards = DangerousAction.Deck.pick_and_shuffle state.danger_cards in
+    let state = { state with danger_cards } in
+    match action with
     | NoiseInYourSector -> update_next state NextAction.ConfirmNoiseInYourSector
     | NoiseInAnySector -> update_next state PickNoiseInAnySector
     | Silence -> update_next state ConfirmSilenceInAllSectors

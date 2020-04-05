@@ -217,6 +217,8 @@ let setup_annotation_ui (info : Grid.context_info ref) (my_id : Game.Player.id) 
         label##.innerHTML := Js.string (p.name ^ " (" ^ pid_to_direction p.id ^ ")");
         input##.className := Js.string "annotate-player-toggle switch is-dark";
         label##.className := Js.string "annotate-player-label";
+        label##.style##.backgroundColor := Js.string (pid_to_color p.id);
+        label##.style##.borderRadius := Js.string "0.15rem";
         div##.style##.display := Js.string "block";
 
         Dom.appendChild div input;

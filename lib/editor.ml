@@ -201,6 +201,8 @@ let setup_buttons (state : editor_state) =
     );
     copy_btn##.onclick := Dom_html.handler (fun _ ->
         gen_btn##click;
+        text_area##select;
+        Dom_html.document##execCommand Js.(string "copy") Js._false Js.null;
         Js._false;
     )
 ;;

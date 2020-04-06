@@ -870,11 +870,49 @@ let setup_join_modal () =
     )
 ;;
 
+let populate_map_dropdown (map_ref : Maps.map_info ref) =
+    let maps = Maps.built_ins in
+    let select = get_select "host-modal-maps" in
+    let custom_map_div = get_elem_id "map-string-entry" in
+    List.iteri maps ~f:(fun idx map ->
+        let opt = Dom_html.createOption Dom_html.document in
+        opt##.innerHTML := Js.string map.name;
+        opt##.onclick := Dom_html.handler (fun _ ->
+            custom_map_div##.style##.display := Js.string "none";
+            map_ref := map;
+            Js._false;
+        );
+        if idx = 0 then (
+            opt##.selected := Js._true;
+        );
+        Dom.appendChild select opt
+    );
+    (* Custom entry *)
+    let opt = Dom_html.createOption Dom_html.document in
+    opt##.innerHTML := Js.string "Custom (Enter String)";
+    opt##.onclick := Dom_html.handler (fun _ ->
+        custom_map_div##.style##.display := Js.string "";
+        Js._false;
+    );
+    let text_area = get_text_area "custom-map-string" in
+    text_area##.onchange := Dom_html.handler (fun _ ->
+        map_ref := Maps.{
+            name = "Custom Map";
+            value = String (text_area##.value |> Js.to_string);
+        };
+        Js._false;
+    );
+    Dom.appendChild select opt;
+;;
+
 let setup_host_modal () =
     let host_btn = get_btn "host-modal-btn" in
     let name = get_input "host-modal-name" in
     let num_players = get_select "host-modal-players" in
     let server = get_input "host-modal-server" in
+
+    let map_choice_ref = ref List.(hd_exn Maps.built_ins) in
+    populate_map_dropdown map_choice_ref;
 
     host_btn##.onclick := Dom_html.handler (fun _ ->
         let name = input_value name in
@@ -910,7 +948,7 @@ let setup_host_modal () =
                        update_event_diff !info 0 !game event_diff;
                    in
                    let _ =
-                        let map = Game.generate_map() in
+                        let map = Maps.build_map !map_choice_ref.value in
                         game := Game.new_game !player_list map
                    in
                    host := Some (Host.create game update_ui);

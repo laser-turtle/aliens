@@ -186,17 +186,22 @@ let to_map_string (map : Sector.t HexMap.t) : string =
     ) map
 ;;
 
-let random_map w h : t =
+let random_map ?(sector_count=(23*14)) w h : t =
     let map =
+        let count = ref 0 in
         HexMap.create_grid w h ~f:(fun _ ->
-            if Random.int 100 < 75 then (
-                let r = Random.int 100 in
-                let sector = 
-                    if r < 60 then Sector.Dangerous
-                    else Sector.Safe
-                in
-                Some sector
-            ) else None
+            if !count > sector_count then None
+            else (
+                count := !count + 1;
+                if Random.int 100 < 75 then (
+                    let r = Random.int 100 in
+                    let sector = 
+                        if r < 60 then Sector.Dangerous
+                        else Sector.Safe
+                    in
+                    Some sector
+                ) else None
+            )
         )
     in
     (* Pick 4 random spots to be escape hatches *)

@@ -46,6 +46,7 @@ let setup_resize_handler (state : editor_state) =
         let map_background = Canvas.get_canvas map_background in
         let gui_canvas = Canvas.get_canvas gui_canvas in
         reset_canvas_size map_canvas;
+        reset_canvas_size map_background;
         reset_canvas_size gui_canvas;
         Canvas.fix_canvas_dpi map_canvas;
         Canvas.fix_canvas_dpi map_background;
@@ -155,13 +156,15 @@ let setup_ui (state : editor_state) =
         );
         Js._false;
     );
+    gui##.onpointerleave := Dom_html.handler (fun _ ->
+        Canvas.clear gui;
+        Js._false;
+    );
     gui##.onmousedown := Dom_html.handler (fun _ ->
-        Caml.print_endline "Mouse down";
         state.mouseDown <- true;
         Js._false;
     );
     gui##.onmouseup := Dom_html.handler (fun _ ->
-        Caml.print_endline "Mouse up";
         state.mouseDown <- false;
         Js._false;
     );
@@ -173,6 +176,33 @@ let setup_ui (state : editor_state) =
         );
         Js._false;
     );
+;;
+
+let setup_buttons (state : editor_state) =
+    let text_area = get_text_area "map-string" in
+    let copy_btn = get_btn "copy-to-clipboard" in
+    let read_btn = get_btn "read-map-string" in
+    let gen_btn = get_btn "gen-map-string" in
+    read_btn##.onclick := Dom_html.handler (fun _ ->
+        (try
+            let str = Js.to_string text_area##.value in
+            Caml.print_endline str;
+            state.map <- (SectorMap.from_map_string str).map;
+            draw_map state;
+        with Failure str ->
+            Dom_html.window##alert Js.(string str);
+        );
+        Js._false;
+    );
+    gen_btn##.onclick := Dom_html.handler (fun _ ->
+        let str = SectorMap.to_map_string state.map in
+        text_area##.value := Js.string str;
+        Js._false;
+    );
+    copy_btn##.onclick := Dom_html.handler (fun _ ->
+        gen_btn##click;
+        Js._false;
+    )
 ;;
 
 let attach () =
@@ -193,6 +223,7 @@ let attach () =
             mouseDown = false;
         } in
 
+        setup_buttons state;
         setup_resize_handler state;
         setup_ui state;
         draw_map_background state.info;

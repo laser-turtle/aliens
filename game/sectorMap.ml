@@ -167,9 +167,10 @@ let from_map_string (str : string) =
     }
 ;;
 
-let to_map_string (t : t) : string =
+let to_map_string (map : Sector.t HexMap.t) : string =
     Map.fold ~init:"" ~f:(fun ~key ~data str ->
         let coord = GameUtil.hex_coord_to_sector_location key in
+        Caml.print_endline coord;
         let code = match data with
                  | Sector.AlienSpawn -> "A"
                  | HumanSpawn -> "H"
@@ -182,7 +183,7 @@ let to_map_string (t : t) : string =
                  | EscapeHatch _ -> failwith "to_map_string invalid escape hatch"
         in
         str ^ coord ^ code
-    ) t.map
+    ) map
 ;;
 
 let random_map w h : t =

@@ -34,6 +34,13 @@ let get_input id =
     )
 ;;
 
+let get_text_area id =
+    get_elem_type id (function
+        | Textarea t -> t
+        | _ -> failwith "expected text area"
+    )
+;;
+
 let get_select id =
     get_elem_type id (function
         | Select s -> s

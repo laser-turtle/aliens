@@ -12,10 +12,9 @@ let hex_coord_to_sector_offsets (hcoord : HexCoord.t) : int * int =
 ;;
 
 let hex_coord_to_sector_location (hcoord : HexCoord.t) : string =
-    let col = HexCoord.q hcoord in
-    let row = HexCoord.r hcoord + ((HexCoord.q hcoord + -1 * (HexCoord.q hcoord land 1)) / 2) in
+    let col, row = hex_coord_to_sector_offsets hcoord in
     let letter = column_letters.(col) in
-    let row = Printf.sprintf "%02d" (row + 1) in
+    let row = Printf.sprintf "%02d" row in
     letter ^ row
 ;;
 
@@ -28,7 +27,7 @@ let sector_location_to_hex_coord (str : string) =
         |> fst
     in
     let q = col in
-    let r = row - (col - 1 * (col land 1) / 2) in
+    let r = row - ((col - 1 * (col land 1)) / 2) - 1 in
     let s = -q - r in
     HexCoord.make q r s
 ;;

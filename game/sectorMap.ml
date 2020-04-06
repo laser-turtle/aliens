@@ -92,6 +92,21 @@ let is_escape_hatch (t : t) (coord : HexCoord.t) : bool =
     )
 ;;
 
+let set (t : t) ~(coord : HexCoord.t) ~(sector : Sector.t) = 
+    { t with
+      map = Map.set t.map ~key:coord ~data:sector
+    }
+;;
+
+let from_sector_map (_map : Sector.t HexMap.t) : t =
+    (* TODO - validate map *)
+    empty
+;;
+
+let remove (t : t) (coord : HexCoord.t) =
+    { t with map = Map.remove t.map coord }
+;;
+
 let find_exn (t : t) =
     Map.find_exn t.map
 
@@ -104,6 +119,70 @@ let is_sector_empty (t : t) c =
     match Map.find t.map c with
     | None -> true
     | Some _ -> false
+;;
+
+let from_map_string (str : string) =
+    let map = ref HexMap.empty in
+    let human_spawn = ref HexCoord.(make 0 0 0) in
+    let alien_spawn = ref HexCoord.(make 0 1 0) in
+    let escape_hatches = ref [] in
+    let rec loop idx =
+        if idx < String.length str then (
+            let loc = String.sub ~pos:idx ~len:3 str in
+            let loc = GameUtil.sector_location_to_hex_coord loc in
+            let sector =
+                match String.get str (idx+3) with
+                | 'W' -> 
+                    escape_hatches := loc :: !escape_hatches;
+                    Sector.EscapeHatch 1
+                | 'X' -> 
+                    escape_hatches := loc :: !escape_hatches;
+                    Sector.EscapeHatch 2
+                | 'Y' -> 
+                    escape_hatches := loc :: !escape_hatches;
+                    Sector.EscapeHatch 3
+                | 'Z' -> 
+                    escape_hatches := loc :: !escape_hatches;
+                    Sector.EscapeHatch 4
+                | 'A' -> 
+                    alien_spawn := loc;
+                    Sector.AlienSpawn
+                | 'H' -> 
+                    human_spawn := loc;
+                    Sector.HumanSpawn
+                | 'D' -> Sector.Dangerous
+                | 'S' -> Sector.Safe
+                | _ -> failwith "Unrecognized character in map string"
+            in
+            map := Map.set !map ~key:loc ~data:sector;
+            loop (idx + 4);
+        )
+    in
+    loop 0;
+    {
+        alien_spawn = !alien_spawn;
+        human_spawn = !human_spawn;
+        escape_hatches = !escape_hatches;
+        map = !map;
+    }
+;;
+
+let to_map_string (t : t) : string =
+    Map.fold ~init:"" ~f:(fun ~key ~data str ->
+        let coord = GameUtil.hex_coord_to_sector_location key in
+        let code = match data with
+                 | Sector.AlienSpawn -> "A"
+                 | HumanSpawn -> "H"
+                 | Dangerous -> "D"
+                 | Safe -> "S"
+                 | EscapeHatch 1 -> "W"
+                 | EscapeHatch 2 -> "X"
+                 | EscapeHatch 3 -> "Y"
+                 | EscapeHatch 4 -> "Z"
+                 | EscapeHatch _ -> failwith "to_map_string invalid escape hatch"
+        in
+        str ^ coord ^ code
+    ) t.map
 ;;
 
 let random_map w h : t =

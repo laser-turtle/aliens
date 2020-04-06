@@ -400,6 +400,14 @@ let calculate_info (canvas : canvas) map_w map_h =
     }
 ;;
 
+let draw_sectors context info map =
+    context##.fillStyle := Js.(string "white");
+    context##.strokeStyle := Js.(string Colors.hex_border);
+    Map.iteri map ~f:(fun ~key ~data ->
+        draw_hex_item info key data
+    );
+;;
+
 let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : unit =
     let info = calculate_info canvas map_w map_h in
     let context = info.context in
@@ -409,10 +417,5 @@ let draw (canvas : canvas) (map : Sector.t HexMap.t) map_w map_h : unit =
 
     draw_background context origin size grid_size;
     draw_top_axis info;
-
-    context##.fillStyle := Js.(string "white");
-    context##.strokeStyle := Js.(string Colors.hex_border);
-    Map.iteri map ~f:(fun ~key ~data ->
-        draw_hex_item info key data
-    );
+    draw_sectors context info map;
 ;;

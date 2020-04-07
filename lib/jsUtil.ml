@@ -55,6 +55,13 @@ let get_object id =
     )
 ;;
 
+let get_embed id =
+    get_elem_type id (function
+        | Embed e -> e
+        | _ -> failwith "expected object"
+    )
+;;
+
 let select_value (select : Dom_html.selectElement Js.t) : string =
     let item = select##.options##item select##.selectedIndex in
     item

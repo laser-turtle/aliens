@@ -601,8 +601,16 @@ let timeout amt fn =
 ;;
 
 let show_card data onclick =
-    let svg = get_object "card-svg-object" in
-    svg##.data := Js.string data;
+    let parent = get_elem_id "card-svg-holder" in
+    let svg = get_embed "card-svg-object" in
+    Dom.removeChild parent svg;
+    (* Recreate the embedded container *)
+    let svg = Dom_html.createEmbed Dom_html.document in
+    svg##.id := Js.string "card-svg-object";
+    svg##.className := Js.string "card-svg";
+    svg##._type := Js.string "image/svg+xml";
+    svg##.src := Js.string data;
+    Dom.appendChild parent svg;
     let modal = get_elem_id "card-flip-modal" in
     modal##.onclick := Dom_html.handler (fun _ ->
         modal##.onclick := Dom_html.no_handler;

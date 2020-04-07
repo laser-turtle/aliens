@@ -721,7 +721,8 @@ let update_noise_ping (loc : Point.t) (size : float) : unit =
 
 let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (_game : Game.state) events =
     List.iter events ~f:(function
-        | Game.Event.Noise (_, coord) ->
+        | Game.Event.Noise (_, coord)
+        | Game.Event.Attack (_, coord, _) ->
             let loc = Layout.hex_to_pixel info.layout coord in
             let size = info.hex_size *. 2. in
             update_noise_ping loc size

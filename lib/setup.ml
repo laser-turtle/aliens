@@ -572,7 +572,7 @@ let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
         | AllHumansKilled -> "Aliens Win!"
         | AllHumansEscapedOrKilled -> "Some humans escaped!"
         | RoundLimit -> "Round Limit Reached"
-        | NoEscapePodsLeft -> "No more useable escape pods!"
+        | NoEscapePodsLeft -> "No more escape pods!"
     in
     game_result##.innerHTML := Js.string win_string;
 

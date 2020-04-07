@@ -178,7 +178,7 @@ let draw_dangerous_sector info hcoord =
     draw_sector_coord info hcoord;
 ;;
 
-let draw_escape_hatch info hcoord n =
+let draw_escape_hatch info hcoord n (state : Sector.escape_hatch_state) =
     draw_hex_base info hcoord Colors.black;
 
     let context = info.context in
@@ -225,6 +225,17 @@ let draw_escape_hatch info hcoord n =
     context##lineTo c5.x c5.y;
     context##lineTo c6.x c6.y;
     context##stroke;
+
+    begin match state with
+    | Damaged ->
+        (* Draw a red overlay *)
+        context##.globalAlpha := 0.5;
+        draw_hex_base info hcoord "red";
+    | Used -> 
+        context##.globalAlpha := 0.5;
+        draw_hex_base info hcoord "#111111";
+    | Undamaged -> ()
+    end;
 
     context##restore;
 ;;
@@ -324,7 +335,7 @@ let draw_hex_item
     match sector with
     | Dangerous -> draw_dangerous_sector context hcoord
     | Safe -> draw_safe_sector context hcoord
-    | EscapeHatch n -> draw_escape_hatch context hcoord n
+    | EscapeHatch (n, state) -> draw_escape_hatch context hcoord n state
     | AlienSpawn -> draw_alien_spawn context hcoord
     | HumanSpawn -> draw_human_spawn context hcoord
 ;;

@@ -307,6 +307,8 @@ let update_noise_stats = function
 let svg_noise_in_your_sector = "noise_in_your_sector.svg"
 let svg_noise_in_any_sector = "noise_any_sector.svg"
 let svg_silence_all_sectors = "silence_all_sectors.svg"
+let svg_escape_pod_damaged = "escape_pod_damaged.svg"
+let svg_escape_pod_undamaged = "escape_pod_undamaged.svg"
 
 let get_canvas = Canvas.get_canvas
 let reset_canvas_size = Canvas.reset_canvas_size canvas_parent 
@@ -568,8 +570,9 @@ let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
         match end_state.condition with 
         | AllHumansEscaped -> "Humans Win!"
         | AllHumansKilled -> "Aliens Win!"
-        | AllHumansEscapedOrKilled -> "Mixed - Some humans escaped"
+        | AllHumansEscapedOrKilled -> "Some humans escaped!"
         | RoundLimit -> "Round Limit Reached"
+        | NoEscapePodsLeft -> "No more useable escape pods!"
     in
     game_result##.innerHTML := Js.string win_string;
 
@@ -664,10 +667,6 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
     | ConfirmSafeSector ->
         clear_gui_handlers();
         clear_gui();
-        (*timeout 1000. (fun () ->
-            apply_move Game.Move.AcceptSafeSector
-        )
-        *)
         apply_move Game.Move.AcceptSafeSector
     | ConfirmSilenceInAllSectors ->
         clear_gui_handlers();
@@ -686,6 +685,18 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
         clear_gui();
         show_card svg_noise_in_any_sector (fun () ->
             pick_noise_sector info my_id state apply_move
+        );
+    | ConfirmEscapePodDamaged ->
+        clear_gui_handlers();
+        clear_gui();
+        show_card svg_escape_pod_damaged (fun () ->
+            apply_move Game.Move.AcceptEscapePodDamaged
+        );
+    | ConfirmEscapePodUndamaged ->
+        clear_gui_handlers();
+        clear_gui();
+        show_card svg_escape_pod_undamaged (fun () ->
+            apply_move Game.Move.AcceptEscapePodUndamaged
         );
     | DecideToAttack coord -> 
         (* Remove pointer *)
@@ -719,17 +730,6 @@ let update_noise_ping (loc : Point.t) (size : float) : unit =
     );
 ;;
 
-let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (_game : Game.state) events =
-    List.iter events ~f:(function
-        | Game.Event.Noise (_, coord)
-        | Game.Event.Attack (_, coord, _) ->
-            let loc = Layout.hex_to_pixel info.layout coord in
-            let size = info.hex_size *. 2. in
-            update_noise_ping loc size
-        | _ -> ()
-    )
-;;
-
 let draw_map (game : Game.state) =
     let canvas = get_canvas map_canvas in
     let _gui = get_canvas gui_canvas in
@@ -744,6 +744,20 @@ let draw_map (game : Game.state) =
     *)
 
     info
+;;
+
+let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (game : Game.state) events =
+    List.iter events ~f:(function
+        | Game.Event.Noise (_, coord)
+        | Game.Event.Attack (_, coord, _) ->
+            let loc = Layout.hex_to_pixel info.layout coord in
+            let size = info.hex_size *. 2. in
+            update_noise_ping loc size
+        | Game.Event.Escape _
+        | Game.Event.EscapeFailed _ -> 
+            draw_map game
+        | _ -> ()
+    )
 ;;
 
 let not_empty_string = Fn.compose not String.is_empty
@@ -891,12 +905,19 @@ let populate_map_dropdown (map_ref : Maps.map_info ref) =
     (* Custom entry *)
     let opt = Dom_html.createOption Dom_html.document in
     opt##.innerHTML := Js.string "Custom (Enter String)";
+    let text_area = get_text_area "custom-map-string" in
     opt##.onclick := Dom_html.handler (fun _ ->
+        let text_len = text_area##.value##.length in
         custom_map_div##.style##.display := Js.string "";
+        if text_len > 0 then (
+            map_ref := Maps.{
+                name = "Custom Map";
+                value = String (text_area##.value |> Js.to_string);
+            };
+        );
         Js._false;
     );
-    let text_area = get_text_area "custom-map-string" in
-    text_area##.onchange := Dom_html.handler (fun _ ->
+    text_area##.onkeyup := Dom_html.handler (fun _ ->
         map_ref := Maps.{
             name = "Custom Map";
             value = String (text_area##.value |> Js.to_string);

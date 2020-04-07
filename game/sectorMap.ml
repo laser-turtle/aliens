@@ -92,6 +92,27 @@ let is_escape_hatch (t : t) (coord : HexCoord.t) : bool =
     )
 ;;
 
+let is_damaged_or_used_escape_hatch (t : t) (coord : HexCoord.t) : bool =
+    List.exists t.escape_hatches ~f:(fun c ->
+        if HexCoord.(c = coord) then (
+            match Map.find_exn t.map c with
+            | EscapeHatch (_, Damaged) -> true
+            | EscapeHatch (_, Used) -> true
+            | _ -> false
+        ) else (
+            false
+        )
+    )
+;;
+
+let are_escape_pods_available (t : t) : bool =
+    List.exists t.escape_hatches ~f:(fun c ->
+        match Map.find_exn t.map c with
+        | EscapeHatch (_, Undamaged) -> true
+        | _ -> false
+    )
+;;
+
 let set (t : t) ~(coord : HexCoord.t) ~(sector : Sector.t) = 
     { t with
       map = Map.set t.map ~key:coord ~data:sector
@@ -134,16 +155,16 @@ let from_map_string (str : string) =
                 match String.get str (idx+3) with
                 | 'W' -> 
                     escape_hatches := loc :: !escape_hatches;
-                    Sector.EscapeHatch 1
+                    Sector.EscapeHatch (1, Undamaged)
                 | 'X' -> 
                     escape_hatches := loc :: !escape_hatches;
-                    Sector.EscapeHatch 2
+                    Sector.EscapeHatch (2, Undamaged)
                 | 'Y' -> 
                     escape_hatches := loc :: !escape_hatches;
-                    Sector.EscapeHatch 3
+                    Sector.EscapeHatch (3, Undamaged)
                 | 'Z' -> 
                     escape_hatches := loc :: !escape_hatches;
-                    Sector.EscapeHatch 4
+                    Sector.EscapeHatch (4, Undamaged)
                 | 'A' -> 
                     alien_spawn := loc;
                     Sector.AlienSpawn
@@ -176,10 +197,10 @@ let to_map_string (map : Sector.t HexMap.t) : string =
                  | HumanSpawn -> "H"
                  | Dangerous -> "D"
                  | Safe -> "S"
-                 | EscapeHatch 1 -> "W"
-                 | EscapeHatch 2 -> "X"
-                 | EscapeHatch 3 -> "Y"
-                 | EscapeHatch 4 -> "Z"
+                 | EscapeHatch (1, _) -> "W"
+                 | EscapeHatch (2, _) -> "X"
+                 | EscapeHatch (3, _) -> "Y"
+                 | EscapeHatch (4, _) -> "Z"
                  | EscapeHatch _ -> failwith "to_map_string invalid escape hatch"
         in
         str ^ coord ^ code
@@ -217,10 +238,10 @@ let random_map ?(sector_count=(23*14)) w h : t =
     let alienSpawn, _ = Map.nth_exn map (rnd_range 0 (count/2)) in
     let humanSpawn, _ = Map.nth_exn map (rnd_range (count/2) count) in
 
-    let map = Map.set map ~key:escape1 ~data:Sector.(EscapeHatch 1) in
-    let map = Map.set map ~key:escape2 ~data:Sector.(EscapeHatch 2) in
-    let map = Map.set map ~key:escape3 ~data:Sector.(EscapeHatch 3) in
-    let map = Map.set map ~key:escape4 ~data:Sector.(EscapeHatch 4) in
+    let map = Map.set map ~key:escape1 ~data:Sector.(EscapeHatch (1, Undamaged)) in
+    let map = Map.set map ~key:escape2 ~data:Sector.(EscapeHatch (2, Undamaged)) in
+    let map = Map.set map ~key:escape3 ~data:Sector.(EscapeHatch (3, Undamaged)) in
+    let map = Map.set map ~key:escape4 ~data:Sector.(EscapeHatch (4, Undamaged)) in
     let map = Map.set map ~key:alienSpawn ~data:Sector.AlienSpawn  in
     let map = Map.set map ~key:humanSpawn ~data:Sector.HumanSpawn in
 

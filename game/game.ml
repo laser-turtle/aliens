@@ -38,6 +38,7 @@ module EndState = struct
     type condition = AllHumansEscaped
                    | AllHumansKilled
                    | AllHumansEscapedOrKilled
+                   | NoEscapePodsLeft
                    | RoundLimit
     [@@deriving show{with_path=false}, yojson]
 
@@ -58,6 +59,8 @@ module NextAction = struct
            | ConfirmSafeSector
            | ConfirmSilenceInAllSectors
            | WaitingForPlayer (* Only used in multiplayer *)
+           | ConfirmEscapePodDamaged
+           | ConfirmEscapePodUndamaged
            | GameOver of EndState.t
            [@@deriving show{with_path=false}, yojson]
 end
@@ -68,6 +71,8 @@ module Move = struct
            | NoiseInAnySector of HexCoord.t
            | AcceptAttack
            | DeclineAttack
+           | AcceptEscapePodDamaged
+           | AcceptEscapePodUndamaged
            | AcceptSafeSector
            | AcceptSilenceInAllSectors
            | AcceptNoiseInYourSector
@@ -82,50 +87,94 @@ module Event = struct
            | Silence of Player.id
            | Attack of Player.id * HexCoord.t * Player.id list
            | Escape of Player.id * HexCoord.t * int (* pod *)
+           | EscapeFailed of Player.id * HexCoord.t * int (* pod *)
            (* Win conditions ? *)
            [@@deriving show{with_path=false}, yojson]
 end
 
+module Deck (M : sig 
+    [@@@ocaml.warning "-32"]
+
+    type t 
+    [@@deriving show, yojson]
+end) : sig
+    type t = {
+        discard : M.t list;
+        pile : M.t list;
+    }[@@deriving show{with_path=false}, yojson]
+
+    val create : M.t list -> t
+
+    val pick_and_shuffle : t -> M.t * t
+
+end = struct
+    type t = {
+        discard : M.t list;
+        pile : M.t list;
+    }[@@deriving show{with_path=false}, yojson]
+
+    let reshuffle (t : t) = 
+        let lst = List.append t.pile t.discard in
+        {
+            discard = [];
+            pile = List.permute ~random_state lst
+        }
+
+    let create (pile : M.t list) =
+        reshuffle { pile; discard = [] }
+    ;;
+
+    let pick (t : t) =
+        let top = List.hd_exn t.pile in
+        top, { pile = List.tl_exn t.pile; discard = top :: t.discard }
+
+    let pick_and_shuffle (t : t) =
+        match t.pile with
+        | [] ->
+            let t = reshuffle t in
+            pick t
+        | hd :: tl ->
+            hd, { pile = tl; discard = hd :: t.discard }
+    ;;
+end
+
 module DangerousAction = struct
-    type t = NoiseInYourSector (* 10/25 *)
-           | NoiseInAnySector (* 10/25 *)
-           | Silence (* 5/25 *)
-           [@@deriving show{with_path=false}, yojson]
-
-    module Deck = struct
-        type deck = {
-            discard : t list;
-            pile : t list;
-        }[@@deriving show{with_path=false}, yojson]
-
-        let reshuffle (t : deck) = 
-            let lst = List.append t.pile t.discard in
-            {
-                discard = [];
-                pile = List.permute ~random_state lst
-            }
-
-        let create ~(num_your : int) ~(num_any : int) ~(num_silence : int) =
-            let your = List.init num_your ~f:(fun _ -> NoiseInYourSector) in
-            let any = List.init num_any ~f:(fun _ -> NoiseInAnySector) in
-            let silence = List.init num_silence ~f:(fun _ -> Silence) in
-            let pile = List.concat [your; any; silence] in
-            reshuffle { pile; discard = [] }
-        ;;
-
-        let pick (t : deck) =
-            let top = List.hd_exn t.pile in
-            top, { pile = List.tl_exn t.pile; discard = top :: t.discard }
-
-        let pick_and_shuffle (t : deck) =
-            match t.pile with
-            | [] ->
-                let t = reshuffle t in
-                pick t
-            | hd :: tl ->
-                hd, { pile = tl; discard = hd :: t.discard }
-        ;;
+    module T = struct
+        type t = NoiseInYourSector (* 10/25 *)
+               | NoiseInAnySector (* 10/25 *)
+               | Silence (* 5/25 *)
+               [@@deriving show{with_path=false}, yojson]
     end
+
+    include T
+
+    module Deck = Deck(T)
+
+    let create ~(num_your : int) ~(num_any : int) ~(num_silence : int) =
+        let your = List.init num_your ~f:(fun _ -> NoiseInYourSector) in
+        let any = List.init num_any ~f:(fun _ -> NoiseInAnySector) in
+        let silence = List.init num_silence ~f:(fun _ -> Silence) in
+        let pile = List.concat [your; any; silence] in
+        Deck.create pile
+    ;;
+end
+
+module EscapeAction = struct
+    module T = struct
+        type t = Damaged
+               | Undamaged
+               [@@deriving show{with_path=false}, yojson]
+    end
+
+    include T
+
+    module Deck = Deck(T)
+
+    let create ~(num_damaged : int) ~(num_undamaged : int) =
+        let damaged = List.init num_damaged ~f:(fun _ -> Damaged) in
+        let undamaged = List.init num_undamaged ~f:(fun _ -> Undamaged) in
+        Deck.create List.(concat [damaged; undamaged])
+    ;;
 end
 
 type state = {
@@ -134,7 +183,8 @@ type state = {
     max_rounds : int;
     current_player : int;
     next_players : Player.id list;
-    danger_cards : DangerousAction.Deck.deck;
+    danger_cards : DangerousAction.Deck.t;
+    escape_cards : EscapeAction.Deck.t;
     map : SectorMap.t;
     next : NextAction.t;
     events : Event.t list;
@@ -189,6 +239,8 @@ let event_to_string (state : state) (event : Event.t) : string =
              )
              |> String.concat ~sep:", ")
     | Escape (id, _, n) -> Printf.sprintf "%s: ESCAPED IN POD %d!" (player_name state id) n
+    | EscapeFailed (id, _, n) -> 
+        Printf.sprintf "%s: TRIED TO ESCAPE IN POD %d, BUT IT'S BROKEN!" (player_name state id) n
 ;;
 
 let gen_players names alien_spawn human_spawn : Player.t list =
@@ -243,7 +295,11 @@ let print_set set =
 let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
     let set = 
         match player.team with
-        | Human -> SectorMap.get_neighbors map player.current_pos
+        | Human -> 
+            SectorMap.get_neighbors map player.current_pos
+            |> HexMap.Set.filter ~f:(fun coord ->
+                not SectorMap.(is_damaged_or_used_escape_hatch map coord)
+            )
         | Alien ->
             (* Aliens can move 1 or 2 spaces *)
             let set = SectorMap.get_neighbors map player.current_pos in
@@ -265,13 +321,10 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
 
 let generate_next_players (current_player : Player.id) (players : Player.t list) : Player.id list =
     (* Need to drop all players until (and including) current player *)
-    let lst =
-        List.drop_while players ~f:(fun p ->
-            p.id <> current_player
-        )
-    in
-    lst
+    players
+    |> List.drop_while ~f:(fun p -> p.Player.id <> current_player)
     |> List.tl_exn
+    |> List.filter ~f:(fun p -> Poly.(p.Player.alive = Player.Alive))
     |> List.map ~f:(fun p -> p.Player.id)
 ;;
 
@@ -295,6 +348,7 @@ let empty_game = {
     current_player = 0;
     events = [];
     danger_cards = { pile=[]; discard=[] };
+    escape_cards = { pile=[]; discard=[] };
     map = SectorMap.empty;
     next_players = [];
     next = NextAction.CurrentPlayerPickMove HexMap.Set.empty;
@@ -309,7 +363,8 @@ let new_game (players : string list) (map : SectorMap.t) =
     round = 0;
     max_rounds;
     map;
-    danger_cards = DangerousAction.Deck.create ~num_your:10 ~num_any:10 ~num_silence:5;
+    danger_cards = DangerousAction.create ~num_your:10 ~num_any:10 ~num_silence:5;
+    escape_cards = EscapeAction.create ~num_damaged:2 ~num_undamaged:4;
     current_player = first_player.id;
     next_players = generate_next_players first_player.id players;
     next = next_player_action map first_player;
@@ -374,10 +429,24 @@ let generate_end_stats (state : state) (type_ : EndState.condition) : EndState.t
 ;;
 
 let check_for_end_game (state : state) : state =
-    let game_over result =
+    let game_over ?(state=state) result =
         { state with next = NextAction.GameOver (
             generate_end_stats state result
         )}
+    in
+
+    let pods_in_valid_condition () =
+        SectorMap.are_escape_pods_available state.map
+    in
+
+    let kill_alive_humans () =
+        { state with players =
+            List.map state.players ~f:(fun p ->
+                match p.team, p.alive with
+                | Human, Alive -> { p with alive = Killed }
+                | _ -> p
+            )
+        }
     in
 
     if state.round = state.max_rounds then (
@@ -398,6 +467,9 @@ let check_for_end_game (state : state) : state =
             game_over EndState.AllHumansKilled
         ) else if num_escaped + num_killed = len then (
             game_over EndState.AllHumansEscapedOrKilled
+        ) else if not (pods_in_valid_condition()) then (
+            (* Kill remaining humans *)
+            game_over ~state:(kill_alive_humans()) EndState.NoEscapePodsLeft
         ) else (
             state
         )
@@ -419,7 +491,6 @@ let change_player (state : state) =
                 next_players = generate_next_players first_player.id state.players;
                 next = next_player_action state.map first_player;
             }
-            (* TODO - check win conditions, huamns could all be dead? *)
         | hd :: tl -> { 
             state with 
                 current_player = hd; next_players = tl;
@@ -427,6 +498,14 @@ let change_player (state : state) =
         }
     in
     check_for_end_game next_state
+;;
+
+let check_escape_pod (state : state) (_coord : HexCoord.t) (_n : int) =
+    let pod, escape_cards = EscapeAction.Deck.pick_and_shuffle state.escape_cards in
+    let state = { state with escape_cards } in
+    match pod with
+    | Damaged -> { state with next = NextAction.ConfirmEscapePodDamaged }
+    | Undamaged -> { state with next = NextAction.ConfirmEscapePodUndamaged }
 ;;
 
 let check_player_move (state : state) (coord : HexCoord.t) : apply_result =
@@ -450,19 +529,12 @@ let check_player_move (state : state) (coord : HexCoord.t) : apply_result =
                 | Human -> pick_danger_action state
                 end
             | AlienSpawn | HumanSpawn -> failwith "Shouldn't be able to move into a spawn point"
-            | EscapeHatch n ->
-                begin match player.team with
-                | Human -> 
-                    (* They win! *) 
-                    { state with
-                      events = Event.Escape (player.id, coord, n) :: state.events;
-                      players = update_player_list state.players player.id ~f:(fun p -> {
-                          p with alive = Escaped
-                      })
-                    }
-                    |> change_player
-                | Alien -> failwith "Aliens shouldn't be able to move into escape hatches"
-                end
+            | EscapeHatch (n, Undamaged) ->
+                (* Need to check if the pod is actually undamaged *)
+                check_escape_pod state coord n
+            | EscapeHatch (_, Used)
+            | EscapeHatch (_, Damaged) ->
+                failwith "Player shouldn't be able to move into a damanged/used pod"
         in
         Ok state
     ) else (
@@ -532,6 +604,45 @@ let verify_transition (_state : state) (_move : Move.t) : bool =
     true
 ;;
 
+let do_escape_pod_damaged (state : state) : apply_result =
+    let player = current_player state in
+    let coord = player.current_pos in
+    let pod_number = 
+        match SectorMap.find_exn state.map coord with
+        | EscapeHatch (n, _) -> n
+        | _ -> failwith "Expected escape hatch"
+    in
+    let map = SectorMap.set state.map ~coord ~sector:(EscapeHatch (pod_number, Damaged)) in
+    let state = { state with map } |> add_event Event.(EscapeFailed (player.id, coord, pod_number))  in
+    Ok (change_player state)
+;;
+
+let do_escape_pod_undamaged (state : state) : apply_result =
+    let player = current_player state in
+    let coord = player.current_pos in
+    let pod_number = 
+        match SectorMap.find_exn state.map coord with
+        | EscapeHatch (n, _) -> n
+        | _ -> failwith "Expected escape hatch"
+    in
+    (* Update this pod to be used *)
+    let map = SectorMap.set state.map ~coord ~sector:(EscapeHatch (pod_number, Used)) in
+    let state = { state with map } in
+    begin match player.team with
+    | Human -> 
+        (* They win! *) 
+        { state with
+          players = update_player_list state.players player.id ~f:(fun p -> {
+              p with alive = Escaped
+          })
+        }
+        |> add_event Event.(Escape (player.id, coord, pod_number))
+        |> change_player
+        |> (fun s -> Ok s)
+    | Alien -> failwith "Aliens shouldn't be able to move into escape hatches"
+    end
+;;
+
 let apply (state : state) (move : Move.t) : apply_result =
     assert (verify_transition state move);
     let next_state =
@@ -540,6 +651,8 @@ let apply (state : state) (move : Move.t) : apply_result =
         | PlayerMove coord -> check_player_move state coord
         | AcceptAttack -> do_alien_attack state
         | DeclineAttack -> Ok (pick_danger_action state)
+        | AcceptEscapePodDamaged -> do_escape_pod_damaged state
+        | AcceptEscapePodUndamaged -> do_escape_pod_undamaged state
         | NoiseInAnySector coord -> do_noise_in_any_sector state coord
         | AcceptNoiseInYourSector -> do_noise_in_your_sector state
         | AcceptSilenceInAllSectors -> do_silence_in_all_sectors state

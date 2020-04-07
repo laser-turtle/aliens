@@ -68,14 +68,14 @@ let update_state_from_click (state : editor_state) (coord : HexCoord.t) =
     | Sector Dangerous -> state.map <- Map.set state.map ~key:coord ~data:Sector.Dangerous
     | Sector HumanSpawn -> state.map <- Map.set state.map ~key:coord ~data:Sector.HumanSpawn
     | Sector AlienSpawn -> state.map <- Map.set state.map ~key:coord ~data:Sector.AlienSpawn
-    | Sector EscapeHatch 1 -> 
-        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch 1)
-    | Sector EscapeHatch 2 -> 
-        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch 2)
-    | Sector EscapeHatch 3 -> 
-        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch 3)
-    | Sector EscapeHatch 4 -> 
-        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch 4)
+    | Sector (EscapeHatch (1, _)) -> 
+        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch (1, Undamaged))
+    | Sector (EscapeHatch (2, _)) -> 
+        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch (2, Undamaged))
+    | Sector (EscapeHatch (3, _)) -> 
+        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch (3, Undamaged))
+    | Sector (EscapeHatch (4, _)) -> 
+        state.map <- Map.set state.map ~key:coord ~data:Sector.(EscapeHatch (4, Undamaged))
     | _ -> ()
     end;
 ;;
@@ -89,7 +89,7 @@ let draw_preview (context : Canvas.context_2d) (state : editor_state) (coord : H
     | Sector Dangerous -> Grid.draw_dangerous_sector info coord
     | Sector HumanSpawn -> Grid.draw_human_spawn info coord
     | Sector AlienSpawn -> Grid.draw_alien_spawn info coord
-    | Sector (EscapeHatch n) -> Grid.draw_escape_hatch info coord n
+    | Sector (EscapeHatch (n, s)) -> Grid.draw_escape_hatch info coord n s
     | Eraser -> 
         context##.fillStyle := Js.string "red";
         Grid.polygon_path context Layout.(polygon_corners state.info.layout coord);
@@ -124,10 +124,10 @@ let setup_ui (state : editor_state) =
     hookup_input "D-input" (Sector Sector.Dangerous);
     hookup_input "H-input" (Sector Sector.HumanSpawn);
     hookup_input "A-input" (Sector Sector.AlienSpawn);
-    hookup_input "W-input" (Sector Sector.(EscapeHatch 1));
-    hookup_input "X-input" (Sector Sector.(EscapeHatch 2));
-    hookup_input "Y-input" (Sector Sector.(EscapeHatch 3));
-    hookup_input "Z-input" (Sector Sector.(EscapeHatch 4));
+    hookup_input "W-input" (Sector Sector.(EscapeHatch (1, Undamaged)));
+    hookup_input "X-input" (Sector Sector.(EscapeHatch (2, Undamaged)));
+    hookup_input "Y-input" (Sector Sector.(EscapeHatch (3, Undamaged)));
+    hookup_input "Z-input" (Sector Sector.(EscapeHatch (4, Undamaged)));
     hookup_input "E-input" Eraser;
 
     let gui = get_canvas gui_canvas in

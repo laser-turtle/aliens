@@ -85,14 +85,14 @@ end
 let annot_state = Annotations.create()
 
 let pid_to_color = function
-    | 0 -> "#ff3860"
-    | 1 -> "#ffdd57"
-    | 2 -> "#48c774"
-    | 3 -> "#209cee"
-    | 4 -> "#3273dc"
-    | 5 -> "#00d1b2"
-    | 6 -> "#363636"
-    | 7 -> "#ff9f38"
+    | 0 -> "#e75c3c"
+    | 1 -> "#e67e22"
+    | 2 -> "#f2ca27"
+    | 3 -> "#6c7a89"
+    | 4 -> "#9b59b6"
+    | 5 -> "#3498db"
+    | 6 -> "#2ecc71"
+    | 7 -> "#744e2e"
     | _ -> failwith "No color for player 8+"
 ;;
 
@@ -204,10 +204,10 @@ let pid_to_direction = function
     | _ -> failwith "Unexpected player id"
 ;;
 
-let setup_annotation_ui (info : Grid.context_info ref) (my_id : Game.Player.id) (state : Game.state ref) =
-    let players = List.filter !state.players ~f:(fun p -> p.id <> my_id) in
+let setup_annotation_ui (info : Grid.context_info ref) (_my_id : Game.Player.id) (state : Game.state ref) =
+    let players = !state.players in
     let container = get_elem_id "annotate-player-container" in
-    container##.innerHTML := Js.string "";
+    setText container "";
     let controls = List.map players ~f:(fun p ->
         let name = Printf.sprintf "player-annotate-input-%d" p.id |> Js.string in
         let input = Dom_html.createInput ~_type:(Js.string "checkbox") ~name Dom_html.document in
@@ -215,13 +215,13 @@ let setup_annotation_ui (info : Grid.context_info ref) (my_id : Game.Player.id) 
         let div = Dom_html.createDiv Dom_html.document in
         let color_box = Dom_html.createDiv Dom_html.document in
         label##.htmlFor := name;
-        label##.innerHTML := Js.string (p.name ^ " (" ^ pid_to_direction p.id ^ ")");
+        setText label (p.name ^ " (" ^ pid_to_direction p.id ^ ")");
         input##.className := Js.string "annotate-player-toggle switch is-dark";
         label##.className := Js.string "annotate-player-label";
         color_box##.style##.width := Js.string "1rem";
         color_box##.style##.height := Js.string "1rem";
         color_box##.style##.display := Js.string "inline-block";
-        color_box##.style##.borderRadius := Js.string "0.2rem";
+        color_box##.style##.borderRadius := Js.string "0.5rem";
         color_box##.style##.backgroundColor := Js.string (pid_to_color p.id);
         color_box##.style##.position := Js.string "relative";
         color_box##.style##.marginLeft := Js.string "0.25rem";
@@ -315,7 +315,7 @@ let reset_canvas_size = Canvas.reset_canvas_size canvas_parent
 
 let set_round_counter (game : Game.state) : unit =
     let round = Dom_html.getElementById_exn "round-text" in
-    round##.innerHTML := Js.string (Printf.sprintf "Round %d/%d" game.round game.max_rounds);
+    setText round (Printf.sprintf "Round %d/%d" game.round game.max_rounds);
 ;;
 
 let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
@@ -336,19 +336,21 @@ let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
 
         )
     in
-    title##.innerHTML := Js.string title_name;
+    setText title title_name;
     let player_string =
         match (Game.get_player state my_id).team with
         | Alien -> "Alien"
         | Human -> "Human"
     in
-    player_type##.innerHTML := Js.string player_string;
-    player_content##.innerHTML := Js.string "";
+    setText player_type player_string;
+    setText player_content "";
     List.iteri state.players ~f:(fun _ player ->
         let span = Dom_html.createSpan Dom_html.document in
         let pid = player.id in
         let className =
-            if pid = state.current_player && pid = my_id then (
+            if Poly.(player.Game.Player.alive <> Game.Player.Alive) then (
+                "player-dead"
+            ) else if pid = state.current_player && pid = my_id then (
                 "your-turn"
             ) else if pid = my_id then (
                 "you-but-not-active"
@@ -357,14 +359,14 @@ let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
             ) else ""
         in
         span##.className := Js.string ("player " ^ className);
-        span##.innerHTML := Js.string player.name;
+        setText span player.name;
         Dom.appendChild player_content span;
     )
 ;;
 
 let set_sector_history (my_id : Game.Player.id)  (state : Game.state) : unit =
     let history = Dom_html.getElementById_exn "sector-history" in
-    history##.innerHTML := Js.string "";
+    setText history "";
     let append_element idx sector =
         let div = Dom_html.createDiv Dom_html.document in
         let s1 = Dom_html.createStrong Dom_html.document in
@@ -372,8 +374,8 @@ let set_sector_history (my_id : Game.Player.id)  (state : Game.state) : unit =
         let text = Dom_html.document##createTextNode Js.(string sector) in
         let idx = Printf.sprintf "%02d[" (idx + 1) in
         div##.className := Js.string "sector-item";
-        s1##.innerHTML := Js.string idx;
-        s2##.innerHTML := Js.string "]";
+        setText s1 idx;
+        setText s2 "]";
         Dom.appendChild div s1;
         Dom.appendChild div text;
         Dom.appendChild div s2;
@@ -388,11 +390,11 @@ let set_sector_history (my_id : Game.Player.id)  (state : Game.state) : unit =
 
 let set_event_list (state : Game.state) : unit =
     let content = Dom_html.getElementById_exn "event-list-content" in
-    content##.innerHTML := Js.string "";
+    setText content "";
     List.iter state.events ~f:(fun event ->
         let event_str = Game.event_to_string state event in
         let p = Dom_html.createP Dom_html.document in
-        p##.innerHTML := Js.(string event_str);
+        setText p event_str;
         Dom.appendChild content p
     )
 ;;
@@ -475,34 +477,6 @@ let hide_attack_container () =
     div##.style##.display := Js.string "none";
 ;;
 
-(*
-let advance_game (game : Game.state) : Game.state =
-    let open Game in
-    hide_attack_container();
-    match game.next with
-    | NextAction.CurrentPlayerPickMove moves ->
-        let move = Set.choose_exn moves in
-        apply_move game Move.(PlayerMove move)
-    | ConfirmSilenceInAllSectors -> 
-        apply_move game Move.AcceptSilenceInAllSectors
-    | ConfirmNoiseInYourSector ->
-        apply_move game Move.AcceptNoiseInYourSector
-    | ConfirmSafeSector -> 
-        apply_move game Move.AcceptSafeSector
-    | DecideToAttack _coord ->
-        if Random.int 10 = 1 then (
-            apply_move game Move.AcceptAttack
-        ) else (
-            apply_move game Move.DeclineAttack
-        )
-    | PickNoiseInAnySector -> 
-       apply_move game Move.(NoiseInAnySector (List.random_element_exn (Map.keys game.map.map)))
-    | GameOver _ ->
-        (* Display game over pop-up *)
-        game
-;;
-*)
-
 let pick_move_handler moves gui layout x y =
     let context = Canvas.context gui in
     let coord = 
@@ -574,7 +548,7 @@ let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
         | RoundLimit -> "Round Limit Reached"
         | NoEscapePodsLeft -> "No more escape pods!"
     in
-    game_result##.innerHTML := Js.string win_string;
+    setText game_result win_string;
 
     let open Game in
     let set_control_html control state =
@@ -588,7 +562,7 @@ let do_game_over (players : Game.Player.t list) (end_state : Game.EndState.t) =
                 ) else 
                     str
             ) in
-            control##.innerHTML := Js.string str;
+            setText control str;
     in
 
     set_control_html survived Player.Alive;
@@ -721,7 +695,7 @@ and update_ui_for_state (info : Grid.context_info ref) (apply_move : Game.Move.t
         draw_player !info state my_id;
 ;;
 
-let update_noise_ping (loc : Point.t) (size : float) : unit =
+let update_noise_ping (_state : Game.state) (pid : Game.Player.id) (loc : Point.t) (size : float) : unit =
     let elem = Dom_html.getElementById_exn "noise-ping-container" in
     let px f =
         f |> Float.round |> Int.of_float |> Int.to_string |> fun s -> s ^ "px" |> Js.string
@@ -733,6 +707,13 @@ let update_noise_ping (loc : Point.t) (size : float) : unit =
     elem##.style##.left := px x;
     elem##.style##.top := px y;
     elem##.style##.display := Js.string "flex";
+    (* Change circle colors *)
+    let noises = get_elems_by_class "noise-ping-circle" in
+    let color = pid_to_color pid in
+    List.iter noises ~f:(fun circle ->
+        circle##.style##.backgroundColor := Js.string color;
+    );
+
     timeout 2000. (fun () ->
         elem##.style##.display := Js.string "none";
     );
@@ -756,11 +737,11 @@ let draw_map (game : Game.state) =
 
 let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (game : Game.state) events =
     List.iter events ~f:(function
-        | Game.Event.Noise (_, coord)
-        | Game.Event.Attack (_, coord, _) ->
+        | Game.Event.Noise (pid, coord)
+        | Game.Event.Attack (pid, coord, _) ->
             let loc = Layout.hex_to_pixel info.layout coord in
             let size = info.hex_size *. 2. in
-            update_noise_ping loc size
+            update_noise_ping game pid loc size
         | Game.Event.Escape _
         | Game.Event.EscapeFailed _ -> 
             draw_map game
@@ -899,7 +880,7 @@ let populate_map_dropdown (map_ref : Maps.map_info ref) =
     let custom_map_div = get_elem_id "map-string-entry" in
     List.iteri maps ~f:(fun idx map ->
         let opt = Dom_html.createOption Dom_html.document in
-        opt##.innerHTML := Js.string map.name;
+        setText opt map.name;
         opt##.onclick := Dom_html.handler (fun _ ->
             custom_map_div##.style##.display := Js.string "none";
             map_ref := map;
@@ -912,7 +893,7 @@ let populate_map_dropdown (map_ref : Maps.map_info ref) =
     );
     (* Custom entry *)
     let opt = Dom_html.createOption Dom_html.document in
-    opt##.innerHTML := Js.string "Custom (Enter String)";
+    setText opt "Custom (Enter String)";
     let text_area = get_text_area "custom-map-string" in
     opt##.onclick := Dom_html.handler (fun _ ->
         let text_len = text_area##.value##.length in
@@ -991,11 +972,11 @@ let setup_host_modal () =
                enable_modal "lobby-modal";
 
                let callback = Js.wrap_callback (fun data ->
-                   (*Caml.print_endline (Js._JSON##stringify data |> Js.to_string);*)
                    match Js.to_string data##._type with
                    | "player-list-update" -> 
                         player_list := str_array_to_str_list data##.players;
                         List.iter ~f:Caml.print_endline !player_list
+                   | "game-update" -> ()
                    | "player-dropped" -> ()
                    | "player-update" ->
                         (* Grab the player move *)
@@ -1008,7 +989,6 @@ let setup_host_modal () =
                                 | Ok move -> move
                                 | Error err -> failwith err
                         in
-                        (*Caml.print_endline "Got player move";*)
                         Host.do_move (get_host()) move
                    | _ -> ()
                ) in

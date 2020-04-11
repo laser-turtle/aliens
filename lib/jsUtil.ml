@@ -95,6 +95,10 @@ let disable_modal id =
     (get_elem_id id)##.className := Js.string "modal"
 ;;
 
+let setText elem str =
+    elem##.textContent := Js.string str |> Js.Opt.return;
+;;
+
 let get_elems_by_class class_ =
     let elems = Dom_html.document##getElementsByClassName Js.(string class_) in
     List.init elems##.length ~f:(fun i ->

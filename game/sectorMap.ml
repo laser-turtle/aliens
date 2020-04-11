@@ -105,6 +105,24 @@ let is_damaged_or_used_escape_hatch (t : t) (coord : HexCoord.t) : bool =
     )
 ;;
 
+let is_safe_sector (t : t) (coord : HexCoord.t) : bool =
+    match Map.find_exn t.map coord with
+    | Safe -> true
+    | _ -> false
+;;
+
+let is_used_escape_hatch (t : t) (coord : HexCoord.t) : bool =
+    List.exists t.escape_hatches ~f:(fun c ->
+        if HexCoord.(c = coord) then (
+            match Map.find_exn t.map c with
+            | EscapeHatch (_, Used) -> true
+            | _ -> false
+        ) else (
+            false
+        )
+    )
+;;
+
 let are_escape_pods_available (t : t) : bool =
     List.exists t.escape_hatches ~f:(fun c ->
         match Map.find_exn t.map c with

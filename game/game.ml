@@ -192,6 +192,12 @@ type state = {
 }
 [@@deriving show{with_path=false}, yojson]
 
+let get_players_from_team (players : Player.t list) (team : Player.team) : Player.t list =
+    List.filter players ~f:(fun p ->
+        Poly.equal p.team team
+    )
+;;
+
 let event_diff ~(old : state) ~(new_ : state) =
     let len_old = List.length old.events
     and len_new = List.length new_.events in
@@ -207,6 +213,10 @@ let get_player (state : state) (pid : Player.id) =
     )
 ;;
 
+let current_player (state : state) : Player.t =
+    get_player state state.current_player
+;;
+
 let player_name (state : state) (id : Player.id) : string =
     (get_player state id).name
 ;;
@@ -219,16 +229,16 @@ let event_to_string (state : state) (event : Event.t) : string =
     let sector_loc = GameUtil.hex_coord_to_sector_location in
     match event with
     | Noise (id, coord) ->
-        Printf.sprintf "%s: Noise in sector %s"
+            Printf.sprintf "[%s]: Noise in sector %s"
             (player_name state id)
             (sector_loc coord)
-    | Silence id -> Printf.sprintf "%s: Silence in all sectors" (player_name state id)
+    | Silence id -> Printf.sprintf "[%s]: Silence in all sectors" (player_name state id)
     | Attack (id, coord, []) -> 
-        Printf.sprintf "%s: Attacks sector %s, no one is there" 
+            Printf.sprintf "[%s]: Attacks sector %s, no one is there" 
             (player_name state id)
             (sector_loc coord)
     | Attack (id, coord, lst) -> 
-        Printf.sprintf "%s: Attacks sector %s, kills %s" 
+            Printf.sprintf "[%s]: Attacks sector %s, kills %s" 
             (player_name state id)
             (sector_loc coord)
             (lst
@@ -238,9 +248,9 @@ let event_to_string (state : state) (event : Event.t) : string =
                      Printf.sprintf "%s (%s)" name team
              )
              |> String.concat ~sep:", ")
-    | Escape (id, _, n) -> Printf.sprintf "%s: ESCAPED IN POD %d!" (player_name state id) n
+    | Escape (id, _, n) -> Printf.sprintf "[%s]: ESCAPED IN POD %d!" (player_name state id) n
     | EscapeFailed (id, _, n) -> 
-        Printf.sprintf "%s: TRIED TO ESCAPE IN POD %d, BUT IT'S BROKEN!" (player_name state id) n
+            Printf.sprintf "[%s]: TRIED TO ESCAPE IN POD %d, BUT IT'S BROKEN!" (player_name state id) n
 ;;
 
 let gen_players names alien_spawn human_spawn : Player.t list =
@@ -273,7 +283,7 @@ let gen_players names alien_spawn human_spawn : Player.t list =
                 sector_history = [];
                 team = team;
                 alive = Alive;
-                name;
+                name = Printf.sprintf "%s (%d)" name i;
             }
         )
         |> List.permute ~random_state
@@ -298,7 +308,7 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
         | Human -> 
             SectorMap.get_neighbors map player.current_pos
             |> HexMap.Set.filter ~f:(fun coord ->
-                not SectorMap.(is_damaged_or_used_escape_hatch map coord)
+                not SectorMap.(is_used_escape_hatch map coord)
             )
         | Alien ->
             (* Aliens can move 1 or 2 spaces *)
@@ -401,21 +411,6 @@ let update_next (state : state) (next : NextAction.t) : state = {
 
 type apply_result = (state, Move.invalid) Result.t
 
-let pick_danger_action (state : state) : state =
-    let action, danger_cards = DangerousAction.Deck.pick_and_shuffle state.danger_cards in
-    let state = { state with danger_cards } in
-    match action with
-    | NoiseInYourSector -> update_next state NextAction.ConfirmNoiseInYourSector
-    | NoiseInAnySector -> update_next state PickNoiseInAnySector
-    | Silence -> update_next state ConfirmSilenceInAllSectors
-;;
-
-let get_players_from_team (players : Player.t list) (team : Player.team) : Player.t list =
-    List.filter players ~f:(fun p ->
-        Poly.equal p.team team
-    )
-;;
-
 let generate_end_stats (state : state) (type_ : EndState.condition) : EndState.t = 
     let humans = get_players_from_team state.players Player.Human in
     let aliens = get_players_from_team state.players Player.Alien in
@@ -427,6 +422,7 @@ let generate_end_stats (state : state) (type_ : EndState.condition) : EndState.t
       condition = type_;
     }
 ;;
+
 
 let check_for_end_game (state : state) : state =
     let game_over ?(state=state) result =
@@ -476,15 +472,16 @@ let check_for_end_game (state : state) : state =
     )
 ;;
 
-let current_player (state : state) : Player.t =
-    get_player state state.current_player
-;;
 
 let change_player (state : state) =
     let next_state =
-        match state.next_players with
+        let players = List.drop_while state.next_players ~f:(fun p ->
+            let p = get_player state p in
+            Poly.(p.Player.alive <> Player.Alive)
+        ) in
+        match players with
         | [] -> 
-            let first_player = List.hd_exn state.players in
+            let first_player = get_player state (find_first_alive_player state.players) in
             { state with 
                 round = state.round + 1;
                 current_player = first_player.id;
@@ -498,6 +495,22 @@ let change_player (state : state) =
         }
     in
     check_for_end_game next_state
+;;
+
+let pick_danger_action (state : state) : state =
+    (* First check if they're in a dangerous sector *)
+    let player = current_player state in
+    if SectorMap.is_safe_sector state.map player.current_pos then (
+        (* Change player *)
+        update_next state NextAction.ConfirmSafeSector
+    ) else (
+        let action, danger_cards = DangerousAction.Deck.pick_and_shuffle state.danger_cards in
+        let state = { state with danger_cards } in
+        match action with
+        | NoiseInYourSector -> update_next state NextAction.ConfirmNoiseInYourSector
+        | NoiseInAnySector -> update_next state PickNoiseInAnySector
+        | Silence -> update_next state ConfirmSilenceInAllSectors
+    )
 ;;
 
 let check_escape_pod (state : state) (_coord : HexCoord.t) (_n : int) =
@@ -522,7 +535,11 @@ let check_player_move (state : state) (coord : HexCoord.t) : apply_result =
         let sector = SectorMap.find_exn state.map coord in
         let state = 
             match sector with
-            | Safe -> update_next state NextAction.ConfirmSafeSector
+            | Safe -> 
+                begin match player.team with
+                | Human -> update_next state NextAction.ConfirmSafeSector
+                | Alien -> update_next state NextAction.(DecideToAttack coord)
+                end
             | Dangerous -> 
                 begin match player.team with
                 | Alien -> update_next state NextAction.(DecideToAttack coord)
@@ -532,9 +549,9 @@ let check_player_move (state : state) (coord : HexCoord.t) : apply_result =
             | EscapeHatch (n, Undamaged) ->
                 (* Need to check if the pod is actually undamaged *)
                 check_escape_pod state coord n
-            | EscapeHatch (_, Used)
+            | EscapeHatch (_, Used) -> change_player state
             | EscapeHatch (_, Damaged) ->
-                failwith "Player shouldn't be able to move into a damanged/used pod"
+                failwith "Player shouldn't be able to move into a damaged/used pod"
         in
         Ok state
     ) else (
@@ -556,6 +573,7 @@ let do_alien_attack (state : state) : apply_result =
         state.players
         |> List.filter ~f:(fun (p : Player.t) ->
                 p.id <> attacker.id &&
+                Poly.(p.alive = Player.Alive) &&
                 HexCoord.(p.current_pos = attacker.current_pos)
            )
     in

@@ -110,7 +110,7 @@ wss.on('connection', function connection(ws) {
                 sockets: [{alive:true, ws}],
                 lobby_info: {
                     id : game_id,
-                    players : [msg.name],
+                    players : [msg.name.substring(0, 24)],
                     max_players : msg.max_players,
                     latest_seq_id : 0,
                 },

@@ -290,7 +290,8 @@ let set_player_turn (state : Game.state) (my_id : Game.Player.id) : unit =
         ) else (
             let name = Game.player_name state state.current_player in
             if String.length name > 11 then (
-                Printf.sprintf "%s…'s Turn" String.(sub ~pos:0 ~len:8 name)
+                let str = Js.(string name)##substring 0 8 in
+                Printf.sprintf "%s…'s Turn" Js.(to_string str)
             ) else (
                 Printf.sprintf "%s's Turn" name
             )

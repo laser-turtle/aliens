@@ -303,6 +303,7 @@ let print_set set =
 ;;
 
 let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
+    let remove = Fn.flip HexMap.Set.remove in
     let set = 
         match player.team with
         | Human -> 
@@ -312,7 +313,12 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
             )
         | Alien ->
             (* Aliens can move 1 or 2 spaces *)
-            let set = SectorMap.get_neighbors map player.current_pos in
+            let set = 
+                player.current_pos
+                |> SectorMap.get_neighbors map
+                |> remove map.alien_spawn
+                |> remove map.human_spawn
+            in
             HexMap.Set.fold set ~init:set ~f:(fun set coord ->
                 let new_set = SectorMap.get_neighbors map coord in
                 HexMap.Set.union set new_set
@@ -322,7 +328,6 @@ let get_player_moves (map : SectorMap.t) (player : Player.t) : HexMap.Set.t =
                 not SectorMap.(is_escape_hatch map coord)
             )
     in
-    let remove = Fn.flip HexMap.Set.remove in
     set
     |> remove player.current_pos
     |> remove map.alien_spawn

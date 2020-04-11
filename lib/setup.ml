@@ -703,6 +703,11 @@ let display_action_gif gif =
     enable_modal "action-modal"
 ;;
 
+let random_state = Random.State.make_self_init()
+let pick lst =
+    List.random_element_exn ~random_state lst
+;;
+
 let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (game : Game.state) events =
     List.iter events ~f:(function
         | Game.Event.Noise (pid, coord)
@@ -712,12 +717,12 @@ let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (game :
             update_noise_ping game pid loc size
         | Game.Event.Attack (_, _, _) ->
             (* Show an attack gif *)
-            display_action_gif "alien-attack-kill-1.gif"
+            display_action_gif (pick ["alien-attack-kill-1.gif"; "alien-attack-kill-2.gif"]);
         | Game.Event.Escape _ ->
-            let idx = if Random.int 2 = 0 then "1" else "2" in
-            display_action_gif ("human-escape-" ^ idx ^ ".gif");
+            display_action_gif (pick ["human-escape-1.gif"; "human-escape-2.gif"]);
             draw_map game
         | Game.Event.EscapeFailed _ -> 
+            display_action_gif (pick ["human-escape-fail-1.gif"; "human-escape-fail-2.gif"]);
             draw_map game
         | _ -> ()
     )
@@ -761,6 +766,8 @@ let resize_callback (info : Grid.context_info ref) (game : Game.state ref) (my_i
 let setup_action_modal () =
     let elem = get_elem_id "action-modal" in
     elem##.onclick := Dom_html.handler (fun _ ->
+        let img = get_img "action-gif" in
+        img##.src := Js.string "";
         disable_modal "action-modal";
         Js._false
     );

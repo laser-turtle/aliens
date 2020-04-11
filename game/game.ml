@@ -87,6 +87,8 @@ module Event = struct
            | Silence of Player.id
            | Attack of Player.id * HexCoord.t * Player.id list
            | Escape of Player.id * HexCoord.t * int (* pod *)
+           | NewRound of int
+           | SafeSector of Player.id
            | EscapeFailed of Player.id * HexCoord.t * int (* pod *)
            (* Win conditions ? *)
            [@@deriving show{with_path=false}, yojson]
@@ -237,6 +239,8 @@ let event_to_string (state : state) (event : Event.t) : string =
             Printf.sprintf "[%s]: Attacks sector %s, no one is there" 
             (player_name state id)
             (sector_loc coord)
+    | NewRound round -> Printf.sprintf "Round %d" round
+    | SafeSector id -> Printf.sprintf "[%s]: Silent sector" (player_name state id)
     | Attack (id, coord, lst) -> 
             Printf.sprintf "[%s]: Attacks sector %s, kills %s" 
             (player_name state id)
@@ -477,6 +481,13 @@ let check_for_end_game (state : state) : state =
     )
 ;;
 
+let add_event (event : Event.t) (state : state) : state = {
+    state with events = event :: state.events
+}
+
+let add_events (new_events : Event.t list) (state : state) : state = {
+    state with events = List.append new_events state.events
+}
 
 let change_player (state : state) =
     let next_state =
@@ -493,6 +504,7 @@ let change_player (state : state) =
                 next_players = generate_next_players first_player.id state.players;
                 next = next_player_action state.map first_player;
             }
+            |> add_event Event.(NewRound (state.round + 1))
         | hd :: tl -> { 
             state with 
                 current_player = hd; next_players = tl;
@@ -564,14 +576,6 @@ let check_player_move (state : state) (coord : HexCoord.t) : apply_result =
     )
 ;;
 
-let add_event (event : Event.t) (state : state) : state = {
-    state with events = event :: state.events
-}
-
-let add_events (new_events : Event.t list) (state : state) : state = {
-    state with events = List.append new_events state.events
-}
-
 let do_alien_attack (state : state) : apply_result =
     let attacker = current_player state in
     let players_in_sector =
@@ -596,7 +600,11 @@ let do_alien_attack (state : state) : apply_result =
 ;;
 
 let do_safe_sector (state : state) : apply_result =
-    Ok (change_player state)
+    Ok (
+        state
+        |> add_event Event.(SafeSector state.current_player)
+        |> change_player
+    )
 ;;
 
 let do_accept (state : state) (event : Event.t) : apply_result =

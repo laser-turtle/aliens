@@ -58,7 +58,14 @@ let get_object id =
 let get_embed id =
     get_elem_type id (function
         | Embed e -> e
-        | _ -> failwith "expected object"
+        | _ -> failwith "expected embed"
+    )
+;;
+
+let get_img id =
+    get_elem_type id (function
+        | Img i -> i
+        | _ -> failwith "expected img"
     )
 ;;
 

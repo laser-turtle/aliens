@@ -697,14 +697,26 @@ let draw_map (game : Game.state) =
     info
 ;;
 
+let display_action_gif gif =
+    let img = get_img "action-gif" in
+    img##.src := Js.string gif;
+    enable_modal "action-modal"
+;;
+
 let update_event_diff (info : Grid.context_info) (_pid : Game.Player.id) (game : Game.state) events =
     List.iter events ~f:(function
         | Game.Event.Noise (pid, coord)
-        | Game.Event.Attack (pid, coord, _) ->
+        | Game.Event.Attack (pid, coord, []) ->
             let loc = Layout.hex_to_pixel info.layout coord in
             let size = info.hex_size *. 2. in
             update_noise_ping game pid loc size
-        | Game.Event.Escape _
+        | Game.Event.Attack (_, _, _) ->
+            (* Show an attack gif *)
+            display_action_gif "alien-attack-kill-1.gif"
+        | Game.Event.Escape _ ->
+            let idx = if Random.int 2 = 0 then "1" else "2" in
+            display_action_gif ("human-escape-" ^ idx ^ ".gif");
+            draw_map game
         | Game.Event.EscapeFailed _ -> 
             draw_map game
         | _ -> ()
@@ -742,6 +754,14 @@ let resize_callback (info : Grid.context_info ref) (game : Game.state ref) (my_i
         draw_map !game;
         update_ui_for_state info apply_move my_id !game;
 
+        Js._false
+    );
+;;
+
+let setup_action_modal () =
+    let elem = get_elem_id "action-modal" in
+    elem##.onclick := Dom_html.handler (fun _ ->
+        disable_modal "action-modal";
         Js._false
     );
 ;;
@@ -968,6 +988,8 @@ let setup_host_modal () =
 let initialize_modals () =
     let host_btn = get_btn "host-btn" in
     let join_btn = get_btn "join-btn" in
+
+    setup_action_modal();
 
     host_btn##.onclick := Dom_html.handler (fun _ ->
         disable_modal "host-or-join-modal";

@@ -99,8 +99,8 @@ module Host = struct
         let waiting_state = create_waiting_state game in
         if game.current_player = 0 then (
             (* This is us *)
-            state.update_ui diff game;
             state.host_game := game;
+            state.update_ui diff game;
             send_to_server_host (create_game_update waiting_state [0]);
         ) else (
             (* Not us, so render waiting state *)

@@ -265,45 +265,6 @@ let setup_annotation_ui (info : Grid.context_info ref) (_my_id : Game.Player.id)
     );
 ;;
 
-type noise_stats = {
-    mutable noise_in_your : int;
-    mutable noise_in_any : int;
-    mutable silence : int;
-}
-
-let noise_stats = {
-    noise_in_your = 0;
-    noise_in_any = 0;
-    silence = 0;
-}
-
-let print_noise_stats () =
-    let your = noise_stats.noise_in_your
-    and any = noise_stats.noise_in_any
-    and silence = noise_stats.silence in
-    let total = your + any + silence in
-    let f = Caml.float in
-    let your_prob = (f your /. f total) *. 100. in
-    let any_prob = (f any /. f total) *. 100. in
-    let silence_prob = (f silence /. f total) *. 100. in
-    let s1 = Printf.sprintf "Noise in your sector %d/%d %.2f" your total your_prob in
-    let s2 = Printf.sprintf "Noise in any sector %d/%d %.2f" any total any_prob in
-    let s3 = Printf.sprintf "Silence in all sectors %d/%d %.2f" silence total silence_prob in
-    Caml.print_endline s1;
-    Caml.print_endline s2;
-    Caml.print_endline s3;
-;;
-
-let update_noise_stats = function
-    | Game.NextAction.ConfirmNoiseInYourSector -> 
-            noise_stats.noise_in_your <- noise_stats.noise_in_your + 1
-    | PickNoiseInAnySector ->
-            noise_stats.noise_in_any <- noise_stats.noise_in_any + 1
-    | ConfirmSilenceInAllSectors ->
-            noise_stats.silence <- noise_stats.silence + 1
-    | _ -> ()
-;;
-
 let svg_noise_in_your_sector = "noise_in_your_sector.svg"
 let svg_noise_in_any_sector = "noise_any_sector.svg"
 let svg_silence_all_sectors = "silence_all_sectors.svg"
@@ -852,8 +813,6 @@ let setup_join_modal () =
                        );
                        update_ui_for_state info apply_move id !game;
                        update_event_diff !info id !game event_diff;
-                       update_noise_stats !game.next;
-                       print_noise_stats();
                    | _ -> ()
                ) in
 
@@ -949,8 +908,6 @@ let setup_host_modal () =
                    (* Game has started *)
                    let apply_move move = 
                        Host.do_move (get_host()) move;
-                       update_noise_stats !game.next;
-                       print_noise_stats();
                    in
                    let update_ui event_diff state = 
                        (*Caml.print_endline "GUI UPDATE";

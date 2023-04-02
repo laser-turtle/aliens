@@ -804,9 +804,9 @@ let setup_join_modal () =
     let server = get_input "join-modal-server" in
     join_btn##.onclick := Dom_html.handler (fun _ ->
         (* Verify each field *)
-        let name = input_value name in
-        let game_id = input_value game in
-        let server = input_value server in
+        let name = String.strip (input_value name) in
+        let game_id = String.strip(input_value game) in
+        let server = String.strip (input_value server) in
         if not_empty_string name
            && not_empty_string game_id
            && not_empty_string server then (

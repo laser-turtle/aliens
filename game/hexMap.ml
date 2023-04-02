@@ -45,7 +45,6 @@ module Set = struct
         | Error err -> failwith err
 
     let of_yojson json =
-        let open Yojson.Safe.Util in
         match json with
         | `List lst ->
             (try

@@ -35,7 +35,6 @@ let force_ok = function
     | Error err -> failwith err
 
 let map_of_yojson (json : Yojson.Safe.t) =
-    let open Yojson.Safe.Util in
     match json with
     | `List lst -> 
         (try

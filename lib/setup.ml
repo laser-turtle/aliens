@@ -865,6 +865,7 @@ let populate_map_dropdown (map_ref : Maps.map_info ref) =
     let maps = Maps.built_ins in
     let select = get_select "host-modal-maps" in
     let custom_map_div = get_elem_id "map-string-entry" in
+    let opts = ref [] in
     List.iteri maps ~f:(fun idx map ->
         let opt = Dom_html.createOption Dom_html.document in
         setText opt map.name;
@@ -873,10 +874,20 @@ let populate_map_dropdown (map_ref : Maps.map_info ref) =
             map_ref := map;
             Js._false;
         );
+        opts := !opts @ [map.name, opt];
         if idx = 0 then (
             opt##.selected := Js._true;
         );
         Dom.appendChild select opt
+    );
+    select##.onchange := Dom_html.handler (fun _ -> 
+        let selected_map = Js.to_string select##.value in
+        List.iter !opts ~f:(fun (name, opt) -> 
+            if String.(name = selected_map) then (
+                opt##click
+            )
+        );
+        Js._false
     );
     (* Custom entry *)
     let opt = Dom_html.createOption Dom_html.document in
@@ -913,9 +924,9 @@ let setup_host_modal () =
     populate_map_dropdown map_choice_ref;
 
     host_btn##.onclick := Dom_html.handler (fun _ ->
-        let name = input_value name in
+        let name = String.strip (input_value name) in
         let player_count = select_value num_players |> Int.of_string in
-        let server = input_value server in
+        let server = String.strip (input_value server) in
 
         if not_empty_string name 
            && not_empty_string server then (
